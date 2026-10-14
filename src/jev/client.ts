@@ -1,5 +1,5 @@
 import { buildJevRequest, PINNED_MODEL, validateJevResponse, type ValidatedJevResponse } from './contract';
-import type { CitizenDecisionInputV1 } from '@/sim/types';
+import type { CitizenDecisionInput } from '@/sim/types';
 
 const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 
@@ -12,7 +12,7 @@ export type JevCallResult =
  * Retries 429/529 at most once; every attempt counts toward the caller's budget via onAttempt.
  */
 export async function callJev(
-  input: CitizenDecisionInputV1,
+  input: CitizenDecisionInput,
   opts: { apiKey: string; model?: string; timeoutMs?: number; onAttempt?: () => Promise<boolean> },
 ): Promise<JevCallResult> {
   const model = opts.model ?? PINNED_MODEL;

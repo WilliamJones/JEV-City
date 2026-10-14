@@ -1,4 +1,5 @@
 'use client';
+import { Fragment } from 'react';
 import type { Controller } from '@/client/controller';
 import { ACTION_COLOR, ACTION_LABEL, hex } from '@/client/palette';
 import { ACTION_IDS } from '@/sim/types';
@@ -40,6 +41,8 @@ export function Overview({ ctrl }: { ctrl: Controller }) {
         </ul>
         <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>{decided}/{total} citizens have made at least one decision.</p>
       </section>
+
+      <CityStatus ctrl={ctrl} />
 
       <section className="px-5 py-3" style={{ borderTop: '1px solid var(--panel-border)' }}>
         <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>Measured performance<InfoTip section="performance" label="What these numbers mean" /></h3>
@@ -83,6 +86,34 @@ export function Overview({ ctrl }: { ctrl: Controller }) {
         </ul>
       </section>
     </div>
+  );
+}
+
+/** Live facts from the simulation state (never estimates): injuries, clinic, awareness, fire/flood/festival progress. */
+function CityStatus({ ctrl }: { ctrl: Controller }) {
+  const sim = ctrl.sim;
+  const rows: [string, string][] = [];
+  const injured = sim.citizens.filter((c) => c.injury !== 'none').length;
+  const clinic = sim.clinicLoad();
+  if (injured || clinic.treating || clinic.queued) rows.push(['Injured', `${injured}${clinic.treating || clinic.queued ? ` · clinic: ${clinic.treating} treating, ${clinic.queued} waiting (${clinic.capacity} beds)` : ''}`]);
+  if (sim.fireActive || sim.floodActive) rows.push(['Know about it', `${sim.citizens.filter((c) => c.alert !== 'none').length} of ${sim.citizens.length}`]);
+  if (sim.scenario === 'building_fire' && sim.fire.phase !== 'none') {
+    const f = sim.fire;
+    rows.push(['Fire', f.phase === 'suppression' ? `being fought · ${Math.round(f.progress * 100)}% · ${f.respondersOnSite} responder${f.respondersOnSite === 1 ? '' : 's'} on site` : f.phase === 'reopened' ? 'out · streets reopened' : f.phase === 'contained' ? 'out · cooling' : f.engine.dispatched ? `${f.phase} · engine on the way` : f.phase]);
+  }
+  if (sim.scenario === 'flash_flood' && sim.flood.phase !== 'none') rows.push(['Flooded tiles', `${sim.flood.depth.filter((d) => d > 0).length} (${sim.flood.phase})`]);
+  if (sim.scenario === 'street_festival') rows.push(['Festival', `${sim.festival.phase} · ${sim.festivalCrowd()} attending`]);
+  const reunions = sim.events.filter((e) => / found .* — /.test(e.text)).length;
+  const warnings = sim.events.filter((e) => / warned /.test(e.text)).length;
+  if (reunions || warnings) rows.push(['Chains', `${warnings} warning${warnings === 1 ? '' : 's'} passed on · ${reunions} famil${reunions === 1 ? 'y' : 'ies'} reunited`]);
+  if (!rows.length) return null;
+  return (
+    <section className="px-5 py-3" style={{ borderTop: '1px solid var(--panel-border)' }}>
+      <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>City status<InfoTip section="scenarios" label="Scenario timelines" /></h3>
+      <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-xs">
+        {rows.map(([k, v]) => <Fragment key={k}><dt style={{ color: 'var(--ink-faint)' }}>{k}</dt><dd>{v}</dd></Fragment>)}
+      </dl>
+    </section>
   );
 }
 

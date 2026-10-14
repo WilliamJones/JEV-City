@@ -9,7 +9,7 @@ import { ACTION_CRITERIA, buildJevRequest, PINNED_MODEL } from '../src/jev/contr
 import { rulesDecision } from '../src/sim/decisions';
 import { argmax, ruleWeights } from '../src/sim/rules';
 import { createRng } from '../src/sim/rng';
-import { SCENARIOS, type CitizenDecisionInputV1 } from '../src/sim/types';
+import { SCENARIOS, type CitizenDecisionInput } from '../src/sim/types';
 import { Simulation, SIM_VERSION, type DecisionRequest } from '../src/sim/world';
 
 for (const line of readFileSync('.env.local', 'utf8').split('\n')) {
@@ -21,14 +21,14 @@ const arg = (n: string, d: string) => {
   return i > 0 ? process.argv[i + 1] : d;
 };
 const TRIALS = Number(arg('trials', '3'));
-const PER_SCENARIO = Number(arg('per-scenario', '20'));
+const PER_SCENARIO = Number(arg('per-scenario', '10')); // 6 scenarios × 10 = 60 snapshots (sim v6)
 const CONCURRENCY = Number(arg('concurrency', '4'));
 const LLMS = arg('llms', 'openai/gpt-4o-mini,google/gemini-2.5-flash').split(',');
 const JEV_PRICE_IN = 0.042; // USD per 1M input tokens, docs.typesafe.ai/models (2026-10-13); output free
 
 // ---------- 1. Fixed snapshot suite (deterministic) ----------
-function collectSnapshots(): CitizenDecisionInputV1[] {
-  const out: CitizenDecisionInputV1[] = [];
+function collectSnapshots(): CitizenDecisionInput[] {
+  const out: CitizenDecisionInput[] = [];
   for (const sc of SCENARIOS) {
     const sim = new Simulation(sc, 2401);
     const pool: DecisionRequest[] = [];
@@ -68,7 +68,7 @@ type Outcome = {
 };
 
 /** Same single task as the LLMs: one Choice question over the eligible actions. */
-async function runJev(input: CitizenDecisionInputV1): Promise<Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'>> {
+async function runJev(input: CitizenDecisionInput): Promise<Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'>> {
   const full = buildJevRequest(input, PINNED_MODEL);
   const body = { model: full.model, state: full.state, questions: { next_action: full.questions.next_action } };
   const ctrl = new AbortController();
@@ -102,12 +102,12 @@ async function runJev(input: CitizenDecisionInputV1): Promise<Omit<Outcome, 'tra
   }
 }
 
-function llmPrompt(input: CitizenDecisionInputV1, track: Track) {
+function llmPrompt(input: CitizenDecisionInput, track: Track) {
   const options = input.eligibleActionIds.map((id) => `- ${id}: ${ACTION_CRITERIA[id]}`).join('\n');
   return `You are deciding the next action for a simulated citizen in a city simulation.\n\nCitizen state (JSON):\n${JSON.stringify(input)}\n\nWhich eligible next action best matches their current circumstances, needs, role and traits? Use only these eligible actions; do not assume unstated paths or capabilities:\n${options}\n\n${track === 'A' ? 'Return only the chosen action.' : 'Return the chosen action and your probability for every eligible action (probabilities sum to 1).'}`;
 }
 
-async function runLlm(model: string, input: CitizenDecisionInputV1, track: Track): Promise<Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'>> {
+async function runLlm(model: string, input: CitizenDecisionInput, track: Track): Promise<Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'>> {
   const props: Record<string, unknown> = {};
   for (const id of input.eligibleActionIds) props[id] = { type: 'number' };
   const body = {
@@ -176,7 +176,7 @@ async function runLlm(model: string, input: CitizenDecisionInputV1, track: Track
 }
 
 /** Fixed seed per snapshot: the benchmark rules baseline is fully deterministic on identical inputs. */
-function runRules(input: CitizenDecisionInputV1): Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'> {
+function runRules(input: CitizenDecisionInput): Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'> {
   const t0 = performance.now();
   const w = ruleWeights(input, 0);
   const ms = performance.now() - t0;

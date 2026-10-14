@@ -9,7 +9,7 @@ import { callJev, estimateCostUsd } from '../src/jev/client';
 import { PINNED_MODEL } from '../src/jev/contract';
 import { jevDecision, rulesDecision } from '../src/sim/decisions';
 import { Simulation, SCENARIO_META, SIM_VERSION } from '../src/sim/world';
-import { SCENARIOS, type DecisionResultV1, type ScenarioId } from '../src/sim/types';
+import { SCENARIOS, type DecisionResult, type ScenarioId } from '../src/sim/types';
 
 for (const line of readFileSync('.env.local', 'utf8').split('\n')) {
   const m = line.match(/^([A-Z_]+)=(.*)$/);
@@ -33,7 +33,7 @@ type Sample = { scenario: ScenarioId; ok: boolean; ms: number | null; errorClass
 
 async function runScenario(scenario: ScenarioId) {
   const sim = new Simulation(scenario, SEED);
-  const decisions: DecisionResultV1[] = [];
+  const decisions: DecisionResult[] = [];
   const samples: Sample[] = [];
   const inflight = new Map<string, Promise<void>>();
   const checkpoints: Record<number, string> = {};
@@ -41,7 +41,7 @@ async function runScenario(scenario: ScenarioId) {
   while (sim.tick < TICKS) {
     for (const req of sim.outbox.splice(0)) {
       const p = callJev(req.input, { apiKey: apiKey!, model: PINNED_MODEL }).then((r) => {
-        let d: DecisionResultV1;
+        let d: DecisionResult;
         if (r.ok) {
           d = jevDecision(req, r.value, r.requestedModel, r.upstreamMs, estimateCostUsd(r.value.usage));
           const probs = Object.values(r.value.answers.next_action.probabilities);

@@ -20,3 +20,26 @@ Status as of 2026-10-14. **Auto** = covered by `npm test` (41 tests). **Manual**
 ## Also delivered
 - Guided opener built only from real recorded decisions (test-enforced: split distributions, distinct citizens/actions, ≥6 sim-minutes apart).
 - Benchmark (Phase 2A): `/benchmark`, 540 measured calls, full dataset at `/benchmark/results.json`. Decision quality explicitly **not yet evaluated**.
+
+# Sim v6 acceptance (V6-01 – V6-12)
+
+Expansion approved in `docs/reviews/2026-10-14-chatgpt-v6-expansion.md`: 5 new actions (vocabulary `jev-city-actions-v2`, 12 total), 3 new scenarios (Office Fire, Street Festival, Flash Flood), contract `jev-city-decision-v2`, rules baseline `rules-v2`. All tests run on the rules baseline in `tests/v6.test.ts` unless noted.
+
+| ID | Condition | How verified | Status |
+|---|---|---|---|
+| V6-01 | New actions rejected when gates are false | Auto: every request in all 6 scenarios × 1,600 ticks checked against its gate (injury, hazard + safe spot, unaccounted household member + last known place, alert + unwarned person, festival open). Also: nobody is offered *wait* in immediate danger, and a citizen who hasn't heard about a fire/flood is sent `hazard: none` | ✅ |
+| V6-02 | Each new action selectable and executed | Auto (rules) + recorded live JEV run (see recording summary) | ✅ |
+| V6-03 | Immediate hazards → labeled deterministic safety handling | Auto: safety events occur; no citizen ever stands on a closed tile; single-option decisions carry provenance `simulation` and a reason | ✅ |
+| V6-04 | Clinic respects capacity, status, reachability | Auto: only injured people are queued/treated, inside the clinic, never above max beds | ✅ |
+| V6-05 | Family searches use only known locations | Auto: every search's destination equals the searcher's recorded last-known place for that housemate | ✅ |
+| V6-06 | Warnings reach recipients, never loop | Auto: each citizen is alerted at most once; every "warned by a citizen" has a matching warning event naming them | ✅ |
+| V6-07 | Festival attendance = real population at venue | Auto: crowd counts only citizens whose enacted action is *attend festival*; capacity respected. Grey-toned visitors are renderer scenery, never counted | ✅ |
+| V6-08 | Fire/flood closures block people and cars | Auto: cordon tiles unwalkable + undrivable; deep water unwalkable; any water undrivable; no reachable-but-cut-off dry islands | ✅ |
+| V6-09 | All six scenarios replay identically | Auto: `tests/sim.test.ts` replays each recording with identical applied-decision order and checkpoint hashes | ✅ |
+| V6-10 | Rules baseline deterministic, versioned | Auto: identical weights for identical input; only eligible actions weighted; `RULES_VERSION = rules-v2` | ✅ |
+| V6-11 | Every displayed consequence traceable | Auto: every non-incident event is labeled `via` (JEV provenance / simulation / safety); inspector "Why did the world change?" shows the labels | ✅ |
+| V6-12 | Still exactly four JEV questions per decision | Auto: request body keys and criteria = eligible actions; DTO < 4 KB | ✅ |
+
+Honesty notes:
+- Festival crowds are small because JEV mostly prefers carrying on with the current plan (mean P(attend) ≈ 0.11 in a trial run). We did not tune anything to change that; out-of-town visitors are labeled scenery.
+- Fire suppression speed depends on how many responders chose *report for duty* and are at the crew post — a real consequence of recorded decisions, shown in the banner.

@@ -1,8 +1,10 @@
 # JEV City
 
-**The little city with big decisions.** 25 citizens live in an illustrated isometric district. Every time one of them decides what to do next — keep to their routine, go home, shelter, help a neighbor, get supplies, report for duty, or wait — that decision comes from [TypeSafe JEV](https://docs.typesafe.ai). Click anyone to see exactly what JEV returned: the full choice distribution, two rubric scores, a yes/no probability, and the measured latency.
+**The little city with big decisions.** 25 citizens live in an illustrated isometric district. Every time one of them decides what to do next — keep to their routine, go home, shelter, help a neighbor, get supplies, report for duty, wait, get medical care, move away from danger, check on family, warn others or join a festival — that decision comes from [TypeSafe JEV](https://docs.typesafe.ai). Click anyone to see exactly what JEV returned: the full choice distribution, two rubric scores, a yes/no probability, and the measured latency.
 
-Three scenarios: **Ordinary Morning**, **Citywide Blackout** (dusk, the grid fails) and **Meteor Near the Market**.
+Six scenarios: **Ordinary Morning**, **Citywide Blackout** (dusk, the grid fails), **Meteor Near the Market**, **Office Fire** (smoke → flames → fire engine), **Street Festival** (Saturday evening on the plaza) and **Flash Flood** (water rises in the low streets).
+
+Decisions have consequences (sim v6): a warning reaches the people it was given to and changes what they know next; a family search uses only where a housemate *said* they'd be; responders who report for duty put the fire out sooner; nurses who report in add clinic beds. Every step is labeled in the inspector's *Why did the world change?* trail as a JEV decision, simulation logic or a safety rule.
 
 ## Honesty rules
 - **Recorded Replay** (default) plays back real `jev-1.13.0` decisions captured earlier. It makes no live calls and labels timings as historical.
@@ -10,7 +12,7 @@ Three scenarios: **Ordinary Morning**, **Citywide Blackout** (dusk, the grid fai
 - **Rules** is a hand-written heuristic baseline, labeled as such — never shown as model probabilities.
 - If live calls fail, the city falls back to rules and says so on screen.
 
-Measured so far: 1,509/1,509 valid live decisions, p50 94 ms, p95 167 ms upstream ([details](docs/PHASE0-RESULTS.md)).
+Measured so far (sim v6 recordings, 6 scenarios): 2,835/2,835 valid live decisions, p50 92 ms, p95 147 ms upstream ([details](docs/PHASE0-RESULTS.md)).
 
 ## Run locally
 ```bash
@@ -22,7 +24,7 @@ npm run dev
 | Command | What it does |
 |---|---|
 | `npm test` | Determinism, feasibility, contract and proxy-security tests |
-| `npm run record` | Re-capture replays with live JEV (~1,500 calls, ≈ $0.06) |
+| `npm run record` | Re-capture replays with live JEV (~2,800 calls, ≈ $0.13) |
 | `npm run build` | Production build |
 
 ## Architecture

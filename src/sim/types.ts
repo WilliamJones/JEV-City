@@ -1,3 +1,4 @@
+/** Action vocabulary jev-city-actions-v2 (7 original + 5 added in sim v6). */
 export const ACTION_IDS = [
   'continue_routine',
   'go_home',
@@ -6,10 +7,16 @@ export const ACTION_IDS = [
   'seek_supplies',
   'report_for_duty',
   'wait',
+  'seek_medical_care',
+  'move_away_from_hazard',
+  'check_on_family',
+  'warn_others',
+  'attend_festival',
 ] as const;
 export type ActionId = (typeof ACTION_IDS)[number];
+export const ACTIONS_VERSION = 'jev-city-actions-v2';
 
-export const SCENARIOS = ['ordinary_morning', 'blackout', 'meteor'] as const;
+export const SCENARIOS = ['ordinary_morning', 'blackout', 'meteor', 'building_fire', 'street_festival', 'flash_flood'] as const;
 export type ScenarioId = (typeof SCENARIOS)[number];
 
 export const ROLES = ['resident', 'service', 'healthcare', 'responder'] as const;
@@ -28,13 +35,24 @@ export type Plan = (typeof PLANS)[number];
 
 export const HAZARD_LEVELS = ['none', 'distant', 'nearby', 'immediate'] as const;
 export type HazardLevel = (typeof HAZARD_LEVELS)[number];
+export const HAZARD_KINDS = ['none', 'meteor', 'fire', 'flood'] as const;
+export type HazardKind = (typeof HAZARD_KINDS)[number];
+export const INJURIES = ['none', 'minor', 'major'] as const;
+export type Injury = (typeof INJURIES)[number];
+/** How the citizen knows about the current hazard (only what they could actually know). */
+export const ALERT_SOURCES = ['none', 'observed', 'official', 'from_citizen'] as const;
+export type AlertSource = (typeof ALERT_SOURCES)[number];
+export const CLINIC_STATUSES = ['open', 'busy', 'closed'] as const;
+export const FESTIVAL_PHASES = ['none', 'setup', 'open', 'closing', 'closed'] as const;
+export type FestivalPhase = (typeof FESTIVAL_PHASES)[number];
+export const CROWD_LEVELS = ['none', 'light', 'moderate', 'busy'] as const;
 
 export type Traits = { caution: number; altruism: number; sociability: number };
 export type Needs = { fatigue: number; supplies: number };
 
-/** Strict DTO accepted by /api/decision (contract jev-city-decision-v1). */
-export type CitizenDecisionInputV1 = {
-  contractVersion: 'jev-city-decision-v1';
+/** Strict DTO accepted by /api/decision (contract jev-city-decision-v2). */
+export type CitizenDecisionInput = {
+  contractVersion: 'jev-city-decision-v2';
   scenario: ScenarioId;
   seed: number;
   simulationMinute: number;
@@ -45,16 +63,33 @@ export type CitizenDecisionInputV1 = {
     currentPlan: Plan;
     traits: Traits;
     needs: Needs;
+    injury: Injury;
   };
   local: {
     blackout: boolean;
+    /** Perceived hazard: 'none' when the citizen has no way of knowing about it yet. */
     hazard: HazardLevel;
+    hazardKind: HazardKind;
+    alertSource: AlertSource;
     nearbyPersonNeedsHelp: boolean;
-    clinicOperational: boolean;
+    unwarnedPeopleNearby: boolean;
+    clinicStatus: (typeof CLINIC_STATUSES)[number];
+    reachableClinic: boolean;
     reachableHome: boolean;
     reachableShelter: boolean;
+    safeSpotReachable: boolean;
     shopAvailable: boolean;
     isOnDuty: boolean;
+    family: {
+      householdSize: number;
+      unaccountedFor: number;
+      /** Minutes since contact with the longest-unaccounted household member (null if none). */
+      minutesSinceContact: number | null;
+      lastKnownPlace: string | null;
+    };
+    festival: FestivalPhase;
+    festivalCrowd: (typeof CROWD_LEVELS)[number];
+    festivalReachable: boolean;
   };
   eligibleActionIds: ActionId[];
 };
@@ -81,14 +116,15 @@ export type JevAnswers = {
   would_interrupt_routine: NoulAnswer;
 };
 
-export type Engine = 'jev' | 'rules' | 'llm' | 'recording';
-export type Provenance = 'live' | 'recorded' | 'fallback' | 'rules';
+export type Engine = 'jev' | 'rules' | 'llm' | 'recording' | 'simulation';
+/** 'simulation' = only one safe option existed, so no model was asked (labeled in the UI). */
+export type Provenance = 'live' | 'recorded' | 'fallback' | 'rules' | 'simulation';
 export type SamplingPolicy = 'argmax' | 'seeded-distribution' | 'deterministic-override';
 export type DecisionStatus = 'success' | 'replayed' | 'fallback' | 'budget_exhausted' | 'error';
 
-export type DecisionResultV1 = {
+export type DecisionResult = {
   id: string;
-  contractVersion: 'jev-city-decision-v1';
+  contractVersion: 'jev-city-decision-v2';
   scenario: ScenarioId;
   citizenId: string;
   simulatedAtMinute: number;

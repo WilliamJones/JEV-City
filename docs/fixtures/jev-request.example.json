@@ -1,7 +1,7 @@
 {
   "model": "jev-1.13.0",
   "state": {
-    "contractVersion": "jev-city-decision-v1",
+    "contractVersion": "jev-city-decision-v2",
     "scenario": "blackout",
     "seed": 2401,
     "simulationMinute": 1130,
@@ -18,17 +18,32 @@
       "needs": {
         "fatigue": 0.62,
         "supplies": 0.18
-      }
+      },
+      "injury": "none"
     },
     "local": {
       "blackout": true,
-      "hazard": "nearby",
+      "hazard": "none",
+      "hazardKind": "none",
+      "alertSource": "observed",
       "nearbyPersonNeedsHelp": true,
-      "clinicOperational": true,
+      "unwarnedPeopleNearby": false,
+      "clinicStatus": "open",
+      "reachableClinic": true,
       "reachableHome": true,
       "reachableShelter": true,
+      "safeSpotReachable": false,
       "shopAvailable": false,
-      "isOnDuty": true
+      "isOnDuty": true,
+      "family": {
+        "householdSize": 2,
+        "unaccountedFor": 1,
+        "minutesSinceContact": 24,
+        "lastKnownPlace": "office-area"
+      },
+      "festival": "none",
+      "festivalCrowd": "none",
+      "festivalReachable": false
     },
     "eligibleActionIds": [
       "go_home",

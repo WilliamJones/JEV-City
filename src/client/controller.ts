@@ -1,6 +1,6 @@
 'use client';
 import { asReplayed, rulesDecision } from '@/sim/decisions';
-import type { DecisionResultV1, JevAnswers, ScenarioId } from '@/sim/types';
+import type { DecisionResult, JevAnswers, ScenarioId } from '@/sim/types';
 import { SIM_VERSION, Simulation, TICK_MS, type DecisionRequest } from '@/sim/world';
 
 export type Mode = 'replay' | 'live' | 'rules' | 'fallback';
@@ -12,7 +12,7 @@ export type ReplayLog = {
   ticks: number;
   recordedAt: string;
   requestedModel: string;
-  decisions: DecisionResultV1[];
+  decisions: DecisionResult[];
 };
 
 export type LiveSample = { upstreamMs: number; browserMs: number; inputTokens: number; costUsd: number | null };
@@ -60,7 +60,7 @@ export class Controller {
   replay: ReplayLog | null = null;
   /** True while a recording is being fetched; the sim does not advance (no silent fallbacks). */
   loading = false;
-  replayIndex = new Map<string, DecisionResultV1>();
+  replayIndex = new Map<string, DecisionResult>();
   liveSamples: LiveSample[] = [];
   liveFailures: Record<string, number> = {};
   fallbackReason: string | null = null;
@@ -179,12 +179,12 @@ export class Controller {
       const body = await res.json().catch(() => ({ ok: false, errorClass: 'malformed_response' }));
       if (!body.ok) throw Object.assign(new Error(body.errorClass), { errorClass: body.errorClass as string, status: res.status });
       const answers = body.answers as JevAnswers;
-      const top = answers.next_action.choice as DecisionResultV1['enactedChoice'];
+      const top = answers.next_action.choice as DecisionResult['enactedChoice'];
       this.liveSamples.push({ upstreamMs: body.upstreamMs, browserMs, inputTokens: body.usage.input_tokens, costUsd: body.estimatedApiCostUsd });
       if (typeof body.remainingToday === 'number') this.remainingToday = body.remainingToday;
       this.sim.provide(req.key, {
         id: req.key,
-        contractVersion: 'jev-city-decision-v1',
+        contractVersion: 'jev-city-decision-v2',
         scenario: req.input.scenario,
         citizenId: req.citizenId,
         simulatedAtMinute: req.input.simulationMinute,

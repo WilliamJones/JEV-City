@@ -30,5 +30,8 @@ describe('help system', () => {
     expect(content).toContain(hhmm(12 * 60 + 30, tick('METEOR_IMPACT_TICK')));
     expect(content).toContain(hhmm(12 * 60 + 30, tick('METEOR_CREW_TICK')));
     expect(content).toContain(hhmm(12 * 60 + 30, tick('METEOR_CLEARED_TICK')));
+    for (const k of ['FIRE_SMOKE_TICK', 'FIRE_IGNITE_TICK', 'FIRE_DISPATCH_TICK']) expect(content).toContain(hhmm(15 * 60 + 10, tick(k)));
+    for (const k of ['FEST_OPEN_TICK', 'FEST_PEAK_TICK', 'FEST_CLOSING_TICK', 'FEST_CLOSED_TICK']) expect(content).toContain(hhmm(17 * 60, tick(k)));
+    for (const k of ['FLOOD_WARN_TICK', 'FLOOD_RISE_TICK', 'FLOOD_ALERT_TICK', 'FLOOD_RECEDE_TICK', 'FLOOD_DRY_TICK']) expect(content).toContain(hhmm(16 * 60, tick(k)));
   });
 });

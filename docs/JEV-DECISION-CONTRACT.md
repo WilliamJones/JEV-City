@@ -200,3 +200,25 @@ Route `POST /api/decision` (Node.js runtime on Vercel). Only issue a billable ca
 - https://docs.typesafe.ai/primitives
 - https://docs.typesafe.ai/models
 - https://docs.typesafe.ai/introduction/quickstart
+
+---
+
+## Addendum — `jev-city-decision-v2` (sim v6, 2026-10-14)
+
+Implemented in `src/sim/types.ts` and `src/jev/contract.ts`. The upstream TypeSafe request is unchanged: one request, the same four questions; only the state and the Choice criteria map grow.
+
+**New action keys and criteria (server-owned, version-controlled):**
+
+| Key | Criteria text |
+|---|---|
+| `seek_medical_care` | Travel to an operational clinic to seek treatment for the citizen's own injury or health problem. |
+| `move_away_from_hazard` | Leave a nearby hazardous area and move to the nearest reachable safe location without traveling all the way to a designated shelter. |
+| `check_on_family` | Travel to the last known location of a household or family member to check on their wellbeing during a disruption. |
+| `warn_others` | Travel to nearby people who have not received a credible hazard warning and communicate the known danger. |
+| `attend_festival` | Visit an open public festival to participate in social activities, entertainment, or community gatherings. |
+
+**New DTO fields:** `citizen.injury` (`none|minor|major`); `local.hazardKind` (`none|meteor|fire|flood`), `local.alertSource` (`none|observed|official|from_citizen`), `local.unwarnedPeopleNearby`, `local.clinicStatus` (`open|busy|closed`, replaces `clinicOperational`), `local.reachableClinic`, `local.safeSpotReachable`, `local.family { householdSize, unaccountedFor, minutesSinceContact, lastKnownPlace }`, `local.festival`, `local.festivalCrowd`, `local.festivalReachable`. `eligibleActionIds` may now hold 2–12 keys.
+
+**Perception rule:** `hazard`/`hazardKind` describe what the citizen could know. For fires and floods a citizen with `alertSource: none` is sent `hazard: none` even if the map is dangerous nearby — they have not seen it and nobody has told them.
+
+**Fewer than two safe options:** no model is called. The simulation enacts the single option (or stays put) and records provenance `simulation` with a reason. These never appear as JEV output.

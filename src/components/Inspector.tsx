@@ -2,7 +2,7 @@
 import type { Controller } from '@/client/controller';
 import { ACTION_COLOR, ACTION_LABEL, hex, SHIRTS } from '@/client/palette';
 import type { Citizen } from '@/sim/citizens';
-import type { ActionId, DecisionResultV1, ScoreAnswer } from '@/sim/types';
+import type { ActionId, DecisionResult, ScoreAnswer } from '@/sim/types';
 import { MODE_BADGE } from './TopBar';
 import { InfoTip } from './help/InfoTip';
 
@@ -17,11 +17,56 @@ const FALLBACK_REASON: Record<string, string> = {
 };
 const fmtMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
-const PROV: Record<DecisionResultV1['provenance'], { label: string; color: string; note: string }> = {
+const PROV: Record<DecisionResult['provenance'], { label: string; color: string; note: string }> = {
   live: { label: 'LIVE JEV', color: MODE_BADGE.live.color, note: 'Measured just now from the TypeSafe API.' },
   recorded: { label: 'RECORDED JEV', color: MODE_BADGE.replay.color, note: 'Real JEV output captured earlier and replayed. No live call was made.' },
   rules: { label: 'RULES', color: MODE_BADGE.rules.color, note: 'Developer heuristic. Not model output.' },
   fallback: { label: 'FALLBACK', color: MODE_BADGE.fallback.color, note: 'JEV unavailable; rules fallback used. No model probabilities shown.' },
+  simulation: { label: 'SAFETY RULE', color: '#4f9d63', note: 'Only one safe option existed, so the simulation acted without asking any model.' },
+};
+
+const VIA: Record<string, { label: string; color: string }> = {
+  recorded: { label: 'Recorded JEV decision', color: 'var(--teal)' },
+  live: { label: 'Live JEV decision', color: 'var(--coral)' },
+  rules: { label: 'Rules decision', color: '#8a97a6' },
+  fallback: { label: 'Fallback decision', color: 'var(--amber)' },
+  simulation: { label: 'Safety rule', color: '#4f9d63' },
+  safety: { label: 'Safety rule', color: '#4f9d63' },
+  sim: { label: 'Simulation', color: 'var(--ink-faint)' },
+};
+
+/** "Why did the world change?" — this citizen's decisions and their downstream effects, each labeled by what produced it. */
+function Trail({ ctrl, c }: { ctrl: Controller; c: Citizen }) {
+  const rows = ctrl.sim.events.filter((e) => e.citizenId === c.id || e.relatedIds?.includes(c.id)).slice(-9).reverse();
+  if (!rows.length) return <p className="text-xs" style={{ color: 'var(--ink-soft)' }}>Nothing yet.</p>;
+  return (
+    <ol className="space-y-1.5">
+      {rows.map((e, i) => {
+        const v = VIA[e.via ?? 'sim'] ?? VIA.sim;
+        const other = e.citizenId && e.citizenId !== c.id;
+        return (
+          <li key={`${e.tick}-${i}`} className="grid grid-cols-[42px_1fr] gap-2 text-xs">
+            <span className="font-[family-name:var(--font-mono)] tabular-nums" style={{ color: 'var(--ink-faint)' }}>{fmtMin(e.minute)}</span>
+            <span>
+              {other ? <button className="text-left hover:underline" onClick={() => { ctrl.selectedId = e.citizenId!; ctrl.notify(true); }}>{e.text}</button> : e.text}
+              <span className="ml-1.5 inline-block rounded px-1 py-px text-[9px] font-bold uppercase tracking-wider" style={{ color: v.color, border: `1px solid ${v.color}` }}>{v.label}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+const ALERT_TEXT = (ctrl: Controller, c: Citizen) => {
+  const kind = ctrl.sim.hazardKind();
+  const what = kind === 'fire' ? 'the fire' : kind === 'flood' ? 'the flooding' : kind === 'meteor' ? 'the meteor' : ctrl.sim.blackout ? 'the blackout' : null;
+  if (!what) return null;
+  if (c.alert === 'none') return `Doesn’t know about ${what} yet`;
+  if (c.alert === 'observed') return `Saw ${what} first-hand`;
+  if (c.alert === 'official') return `Got the official alert about ${what}`;
+  const from = c.alertFromId ? ctrl.sim.citizen(c.alertFromId).name.split(' ')[0] : 'a neighbor';
+  return `Warned about ${what} by ${from}`;
 };
 
 function Section({ title, aside, help, children }: { title: string; aside?: React.ReactNode; help?: string; children: React.ReactNode }) {
@@ -108,7 +153,7 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
           <h2 className="font-[family-name:var(--font-display)] text-lg font-bold leading-tight">{c.name}, {c.age}</h2>
           <p className="text-xs" style={{ color: 'var(--ink-soft)' }}>{c.occupation} · {c.role}</p>
           <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold">
-            {c.needsHelp ? <span style={{ color: 'var(--coral)' }}>● Needs help — waiting for a neighbor</span> : <>
+            {c.needsHelp ? <span style={{ color: 'var(--coral)' }}>● Needs help — waiting for a neighbor{c.injury === 'major' ? ' (injured)' : ''}</span> : <>
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: c.action ? hex(ACTION_COLOR[c.action]) : 'var(--ink-faint)' }} />
               {c.actionLabel}
             </>}
@@ -116,6 +161,7 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
         </div>
         <button className="chip px-2.5 py-1 text-xs font-semibold" onClick={() => { ctrl.selectedId = null; ctrl.notify(true); }} aria-label="Close inspector">✕</button>
       </div>
+      <Status ctrl={ctrl} c={c} />
 
       {!d && <p className="px-5 pb-4 text-sm" style={{ color: 'var(--ink-soft)' }}>{c.pending ? 'Deciding…' : 'No decision yet — this citizen will decide shortly.'}</p>}
 
@@ -139,7 +185,7 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
             ) : null}
             {d.overrideReason && (
               <p className="mt-3 rounded-lg px-2.5 py-1.5 text-xs" style={{ background: 'var(--chip)' }}>
-                <b>Guardrail:</b> enacted “{ACTION_LABEL[d.enactedChoice]}” — {d.overrideReason}.
+                <b>{d.provenance === 'simulation' ? 'Safety rule' : 'Guardrail'}:</b> enacted “{ACTION_LABEL[d.enactedChoice]}” — {d.overrideReason}.
               </p>
             )}
             <p className="mt-2 text-[10px]" style={{ color: 'var(--ink-faint)' }}>Percentages rounded. Enacted = model top choice (argmax) unless a labeled guardrail applies.</p>
@@ -176,18 +222,26 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
         {d && (
           <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
             {(() => {
-              const req = d;
               const facts: string[] = [];
-              const s = ctrl.sim;
-              if (s.blackout) facts.push('Blackout');
-              const hz = s.hazardLevelAt(c.tile);
-              if (hz !== 'none') facts.push(`Hazard: ${hz}`);
-              if (req.answers?.duty_pressure && (c.role === 'healthcare' || c.role === 'responder') && s.incidentActive) facts.push('On duty');
+              const sim = ctrl.sim;
+              const p = sim.perceivedHazard(c);
+              if (sim.blackout) facts.push('Blackout');
+              if (p.level !== 'none') facts.push(`${p.kind === 'none' ? 'Hazard' : p.kind[0].toUpperCase() + p.kind.slice(1)}: ${p.level}`);
+              if (c.injury !== 'none') facts.push(`Injury: ${c.injury}`);
+              if ((c.role === 'healthcare' || c.role === 'responder') && sim.incidentKnown(c)) facts.push('On duty');
+              const un = sim.unaccountedFor(c);
+              if (un) facts.push(`${un} housemate${un > 1 ? 's' : ''} unaccounted for`);
+              if (sim.festival.phase === 'open') facts.push('Festival open');
               facts.push(`Plan: ${c.plan.replaceAll('_', ' ')}`);
               return facts.map((f) => <span key={f} className="chip px-2 py-0.5">{f}</span>);
             })()}
           </div>
         )}
+      </Section>
+
+      <Section title="Why did the world change?" help="inspector">
+        <Trail ctrl={ctrl} c={c} />
+        <p className="mt-2 text-[10px]" style={{ color: 'var(--ink-faint)' }}>Each step is labeled by what produced it. JEV only chooses actions; movement, warnings, treatment and closures are simulation logic.</p>
       </Section>
 
       {d && (
@@ -206,6 +260,28 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
           <p className="mt-2 text-[10px]" style={{ color: 'var(--ink-faint)' }}>Cost is a token-based estimate (input $0.042/M tokens, output free), not a billed amount.</p>
         </Section>
       )}
+    </div>
+  );
+}
+
+function Status({ ctrl, c }: { ctrl: Controller; c: Citizen }) {
+  const chips: { text: string; color: string }[] = [];
+  if (c.injury !== 'none') chips.push({ text: c.injury === 'major' ? 'Seriously hurt' : 'Minor injury', color: '#d94f86' });
+  if (c.care === 'queued') chips.push({ text: 'Waiting at the clinic', color: '#d94f86' });
+  if (c.care === 'treating') chips.push({ text: 'Being treated', color: '#d94f86' });
+  const alert = ALERT_TEXT(ctrl, c);
+  if (alert) chips.push({ text: alert, color: c.alert === 'none' ? 'var(--ink-faint)' : '#e9b824' });
+  if (c.festivalUntil !== null) chips.push({ text: 'At the festival', color: '#2fa9de' });
+  const fam = Object.keys(c.family).map((id) => ctrl.sim.citizen(id).name.split(' ')[0]);
+  if (!chips.length && !fam.length) return null;
+  return (
+    <div className="-mt-1 flex flex-wrap gap-1.5 px-5 pb-3 text-[11px]">
+      {chips.map((ch) => (
+        <span key={ch.text} className="rounded-full px-2 py-0.5 font-semibold" style={{ border: `1px solid ${ch.color}`, color: ch.color === 'var(--ink-faint)' ? 'var(--ink-soft)' : 'var(--ink)' }}>
+          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: ch.color }} />{ch.text}
+        </span>
+      ))}
+      {fam.length > 0 && <span className="chip px-2 py-0.5">Lives with {fam.join(', ')}</span>}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { Controller } from '@/client/controller';
 
 const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-const KIND_COLOR = { incident: 'var(--coral)', effect: 'var(--amber)', action: 'var(--teal)' } as const;
+const KIND_COLOR = { incident: 'var(--coral)', effect: 'var(--amber)', action: 'var(--teal)', safety: '#4f9d63' } as const;
 
 export function EventFeed({ ctrl }: { ctrl: Controller }) {
   const [open, setOpen] = useState(true);

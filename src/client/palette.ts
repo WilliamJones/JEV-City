@@ -34,6 +34,11 @@ export const ACTION_COLOR: Record<ActionId, number> = {
   seek_supplies: 0xe0a83a,
   report_for_duty: 0xd84d56,
   wait: 0x8a97a6,
+  seek_medical_care: 0xd94f86,
+  move_away_from_hazard: 0x4f9d63,
+  check_on_family: 0x9a6a4a,
+  warn_others: 0xe9b824,
+  attend_festival: 0x2fa9de,
 };
 
 export const ACTION_LABEL: Record<ActionId, string> = {
@@ -44,6 +49,11 @@ export const ACTION_LABEL: Record<ActionId, string> = {
   seek_supplies: 'Seek supplies',
   report_for_duty: 'Report for duty',
   wait: 'Wait',
+  seek_medical_care: 'Seek medical care',
+  move_away_from_hazard: 'Move away from danger',
+  check_on_family: 'Check on family',
+  warn_others: 'Warn others',
+  attend_festival: 'Attend festival',
 };
 
 export const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;

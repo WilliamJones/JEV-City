@@ -105,6 +105,33 @@ export function findPath(walkable: boolean[][], from: Tile, to: Tile): Tile[] | 
   return path.reverse();
 }
 
+/** BFS step distances from `from` to every tile (-1 = unreachable). One pass answers many reachability checks. */
+export function reachMap(walkable: boolean[][], from: Tile): Int16Array {
+  const dist = new Int16Array(MAP_W * MAP_H).fill(-1);
+  const start = from.y * MAP_W + from.x;
+  dist[start] = 0;
+  const queue = [start];
+  for (let qi = 0; qi < queue.length; qi++) {
+    const k = queue[qi];
+    const x = k % MAP_W, y = (k / MAP_W) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H || !walkable[ny][nx]) continue;
+      const nk = ny * MAP_W + nx;
+      if (dist[nk] >= 0) continue;
+      dist[nk] = dist[k] + 1;
+      queue.push(nk);
+    }
+  }
+  return dist;
+}
+
+/** Ground height for the flash-flood scenario: a bowl whose lowest point is beside home 7, south-west of the market. */
+export const FLOOD_BASIN = { x: 3, y: 19 };
+export function elevation(x: number, y: number): number {
+  return Math.hypot(x - FLOOD_BASIN.x, y - FLOOD_BASIN.y) / 17;
+}
+
 /** Human-readable fixed map node id for the decision DTO. */
 export function locationIdFor(t: Tile): string {
   let best = 'street', bestD = 3.5;
@@ -114,4 +141,12 @@ export function locationIdFor(t: Tile): string {
   }
   if (best === 'street') return `street-${Math.floor(t.x / 6)}-${Math.floor(t.y / 6)}`;
   return best;
+}
+
+/** Plain-language name for a location id ("office-area" → "the office tower"). */
+export function placeLabel(id: string | null): string {
+  if (!id) return 'somewhere unknown';
+  const b = BUILDINGS.find((x) => `${x.id}-area` === id);
+  if (b) return b.kind === 'house' ? `home ${b.id.split('-')[1]}` : `the ${b.label.toLowerCase()}`;
+  return 'the street';
 }

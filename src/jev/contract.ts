@@ -1,16 +1,22 @@
 import { z } from 'zod';
 import {
   ACTION_IDS,
+  ALERT_SOURCES,
+  CLINIC_STATUSES,
+  CROWD_LEVELS,
+  FESTIVAL_PHASES,
+  HAZARD_KINDS,
   HAZARD_LEVELS,
+  INJURIES,
   PLANS,
   ROLES,
   SCENARIOS,
   type ActionId,
-  type CitizenDecisionInputV1,
+  type CitizenDecisionInput,
   type JevAnswers,
 } from '@/sim/types';
 
-export const CONTRACT_VERSION = 'jev-city-decision-v1' as const;
+export const CONTRACT_VERSION = 'jev-city-decision-v2' as const;
 export const PINNED_MODEL = 'jev-1.13.0';
 
 const unit = z.number().finite().min(0).max(1);
@@ -29,24 +35,41 @@ export const CitizenDecisionInputSchema = z
         currentPlan: z.enum(PLANS),
         traits: z.object({ caution: unit, altruism: unit, sociability: unit }).strict(),
         needs: z.object({ fatigue: unit, supplies: unit }).strict(),
+        injury: z.enum(INJURIES),
       })
       .strict(),
     local: z
       .object({
         blackout: z.boolean(),
         hazard: z.enum(HAZARD_LEVELS),
+        hazardKind: z.enum(HAZARD_KINDS),
+        alertSource: z.enum(ALERT_SOURCES),
         nearbyPersonNeedsHelp: z.boolean(),
-        clinicOperational: z.boolean(),
+        unwarnedPeopleNearby: z.boolean(),
+        clinicStatus: z.enum(CLINIC_STATUSES),
+        reachableClinic: z.boolean(),
         reachableHome: z.boolean(),
         reachableShelter: z.boolean(),
+        safeSpotReachable: z.boolean(),
         shopAvailable: z.boolean(),
         isOnDuty: z.boolean(),
+        family: z
+          .object({
+            householdSize: z.number().int().min(0).max(8),
+            unaccountedFor: z.number().int().min(0).max(8),
+            minutesSinceContact: z.number().int().min(0).max(1440).nullable(),
+            lastKnownPlace: z.string().regex(/^[a-z0-9-]{1,40}$/).nullable(),
+          })
+          .strict(),
+        festival: z.enum(FESTIVAL_PHASES),
+        festivalCrowd: z.enum(CROWD_LEVELS),
+        festivalReachable: z.boolean(),
       })
       .strict(),
     eligibleActionIds: z
       .array(z.enum(ACTION_IDS))
       .min(2)
-      .max(7)
+      .max(ACTION_IDS.length)
       .refine((a) => new Set(a).size === a.length, 'duplicate action ids'),
   })
   .strict();
@@ -60,6 +83,12 @@ export const ACTION_CRITERIA: Record<ActionId, string> = {
   seek_supplies: 'Go to an open, reachable shop to get supplies.',
   report_for_duty: 'Travel to the assigned emergency or healthcare post when currently on duty.',
   wait: 'Stay at a safe location and re-evaluate later.',
+  // Added in jev-city-actions-v2 (wording from the 2026-10-14 design review; changing it is a contract change).
+  seek_medical_care: "Travel to an operational clinic to seek treatment for the citizen's own injury or health problem.",
+  move_away_from_hazard: 'Leave a nearby hazardous area and move to the nearest reachable safe location without traveling all the way to a designated shelter.',
+  check_on_family: 'Travel to the last known location of a household or family member to check on their wellbeing during a disruption.',
+  warn_others: 'Travel to nearby people who have not received a credible hazard warning and communicate the known danger.',
+  attend_festival: 'Visit an open public festival to participate in social activities, entertainment, or community gatherings.',
 };
 
 export const RISK_RUBRIC = [
@@ -76,7 +105,7 @@ export const DUTY_RUBRIC = [
   'This citizen has explicit emergency-duty responsibilities and immediate people depending on them.',
 ];
 
-export function buildJevRequest(input: CitizenDecisionInputV1, model = PINNED_MODEL) {
+export function buildJevRequest(input: CitizenDecisionInput, model = PINNED_MODEL) {
   const criteria: Record<string, string> = {};
   for (const id of input.eligibleActionIds) criteria[id] = ACTION_CRITERIA[id];
   return {

@@ -3,7 +3,9 @@ import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pi
 import { BUILDINGS, isRoad, MAP_H, MAP_W, STREETLIGHTS, TREES, type Building } from '@/sim/map';
 import type { Citizen } from '@/sim/citizens';
 import type { ActionId } from '@/sim/types';
-import { BLACKOUT_TICK, METEOR_CENTER, METEOR_CLEARED_TICK, METEOR_CREW_TICK, METEOR_IMPACT_TICK, METEOR_WARN_TICK, POWER_RESTORED_TICK, type Simulation } from '@/sim/world';
+import { BLACKOUT_TICK, FEST_OPEN_TICK, FIRE_CENTER, FIRE_IGNITE_TICK, FIRE_SMOKE_TICK, FLOOD_RISE_TICK, METEOR_CENTER, METEOR_CLEARED_TICK, METEOR_CREW_TICK, METEOR_IMPACT_TICK, METEOR_WARN_TICK, POWER_RESTORED_TICK, type Simulation } from '@/sim/world';
+import { FLOOD_BASIN } from '@/sim/map';
+import { ScenarioFx } from './scenes';
 import type { Controller } from './controller';
 import { drawActionIcon } from './icons';
 import { ease, glowTexture, iso, lerp, pts, up, type P } from './iso';
@@ -18,7 +20,7 @@ const SUBSTATION = { x: 14, y: 20 };
 type Light = { sprites: Sprite[]; x: number; y: number; base: number };
 type BuildingView = { b: Building; root: Container; body: Graphics; windows: Graphics; spill: Sprite[]; glow: Sprite | null; badge: Text | null; depth: number; x0: number; x1: number; y0: number; y1: number };
 type CitizenView = {
-  root: Container; body: Container; ring: Graphics; alert: Graphics; pulse: Graphics; bubble: Container; bubbleIcon: Graphics;
+  root: Container; body: Container; ring: Graphics; alert: Graphics; pulse: Graphics; bubble: Container; bubbleIcon: Graphics; cue: Graphics;
   marker: Graphics; markerT: number; markerAt: P | null; pulseT: number; bubbleT: number; lastDecisionId: string | null; label: Text; action: ActionId | null;
 };
 type Stall = { root: Container; x: number; y: number; debris: Graphics };
@@ -31,6 +33,8 @@ export class CityRenderer {
   private markers = new Container();
   private pathLayer = new Graphics();
   private crater = new Graphics();
+  private sceneGround = new Container();
+  private scenes!: ScenarioFx;
   private objects = new Container();
   private lights = new Container();
   private fx = new Container();
@@ -55,6 +59,7 @@ export class CityRenderer {
   private glow!: Texture;
   private night = 0;
   private blackoutF = 0;
+  private ambDark = 0;
   private zoom = 1;
   private pan = { x: 0, y: 0 };
   private fitScale = 1;
@@ -81,7 +86,7 @@ export class CityRenderer {
     this.objects.sortableChildren = true;
     this.lights.blendMode = 'add';
     this.app.stage.addChild(this.world, this.flash);
-    this.world.addChild(this.ground, this.hazardLayer, this.crater, this.markers, this.pathLayer, this.objects, this.lights, this.fx);
+    this.world.addChild(this.ground, this.hazardLayer, this.crater, this.sceneGround, this.markers, this.pathLayer, this.objects, this.lights, this.fx);
     this.drawGround();
     this.drawTrees();
     this.drawStreetlights();
@@ -89,6 +94,7 @@ export class CityRenderer {
     for (const b of BUILDINGS) this.drawBuilding(b);
     this.traffic = new Traffic(this.objects, this.lights, this.glow, this.tintables, this.markers);
     this.setupFx();
+    this.scenes = new ScenarioFx(this.sceneGround, this.objects, this.lights, this.fx, this.app.stage, this.glow, this.tintables, this.people, this.reducedMotion);
     this.setupInput(ctrl);
     this.fit();
     this.app.renderer.on('resize', () => this.fit());
@@ -603,6 +609,7 @@ export class CityRenderer {
     bubbleBg.roundRect(-9, -9, 18, 18, 9).fill(0xffffff).roundRect(-9, -9, 18, 18, 9).stroke({ width: 1, color: 0x14263e, alpha: 0.15 });
     bubbleBg.poly([-3, 8, 3, 8, 0, 12]).fill(0xffffff);
     const bubbleIcon = new Graphics();
+    const cue = new Graphics();
     bubble.addChild(bubbleBg, bubbleIcon);
     bubble.position.set(0, -38);
     bubble.visible = false;
@@ -610,11 +617,11 @@ export class CityRenderer {
     label.anchor.set(0.5, 1);
     label.position.set(0, -27);
     label.visible = false;
-    root.addChild(pulse, shadow, ring, body, alert, bubble, label);
+    root.addChild(pulse, shadow, ring, body, cue, alert, bubble, label);
     this.objects.addChild(root);
     const marker = new Graphics();
     this.markers.addChild(marker);
-    return { root, body, ring, alert, pulse, bubble, bubbleIcon, marker, markerT: 0, markerAt: null, pulseT: 0, bubbleT: 0, lastDecisionId: null, label, action: null };
+    return { root, body, ring, alert, pulse, bubble, bubbleIcon, cue, marker, markerT: 0, markerAt: null, pulseT: 0, bubbleT: 0, lastDecisionId: null, label, action: null };
   }
 
   private citizenDepth(c: Citizen) {
@@ -763,15 +770,18 @@ export class CityRenderer {
     const targetNight = ctrl.night ? 1 : 0;
     this.night += (targetNight - this.night) * 0.05;
     this.blackoutF += ((sim.blackout ? 1 : 0) - this.blackoutF) * 0.04;
-    const dark = Math.max(this.night, this.blackoutF * 0.55);
-    const tint = mix(DAY_TINT, mix(NIGHT_TINT, BLACKOUT_TINT, this.blackoutF), dark);
+    const amb = this.scenes.ambient(sim);
+    this.ambDark += (amb.dark - this.ambDark) * 0.05;
+    const dark = Math.max(this.night, this.blackoutF * 0.55, this.ambDark);
+    let tint = mix(DAY_TINT, mix(NIGHT_TINT, BLACKOUT_TINT, this.blackoutF), dark);
+    if (amb.amount > 0) tint = mix(tint, amb.tint, amb.amount);
     for (const g of this.tintables) g.tint = tint;
     const peopleTint = mix(tint, 0xffffff, 0.5);
     for (const g of this.people) g.tint = peopleTint;
 
     for (const l of this.streetLights) {
       const pw = this.power(sim, l.x, l.y);
-      for (const s of l.sprites) s.alpha = this.night * pw * l.base;
+      for (const s of l.sprites) s.alpha = Math.max(this.night, this.ambDark * 1.4) * pw * l.base;
     }
     for (const v of this.buildings) {
       const pw = v.b.kind === 'clinic' ? 1 : v.b.kind === 'shop' ? Math.max(this.power(sim, v.b.x, v.b.y), 0.65 * (0.85 + Math.sin(t * 9) * 0.1 + Math.sin(t * 23) * 0.05)) : this.power(sim, v.b.x + v.b.w / 2, v.b.y + v.b.h / 2);
@@ -779,7 +789,10 @@ export class CityRenderer {
       for (const s of v.spill) s.alpha = dark * pw * 0.32;
       if (v.badge) {
         const n = sim.occupancy(v.b.id);
-        v.badge.text = n ? `${n} inside` : '';
+        if (v.b.kind === 'clinic') {
+          const l = sim.clinicLoad();
+          v.badge.text = l.treating || l.queued ? `✚ ${l.treating} treating${l.queued ? ` · ${l.queued} waiting` : ''}` : n ? `${n} inside` : '';
+        } else v.badge.text = n ? `${n} inside` : '';
       }
     }
     if (this.beacon) this.beacon.alpha = this.blackoutF * (0.6 + Math.sin(t * 4) * 0.3) + this.night * 0.12;
@@ -799,10 +812,11 @@ export class CityRenderer {
 
     const speed = ctrl.paused ? 0 : ctrl.speed * (sim.stalled ? 0 : 1);
     const walkers = sim.citizens.filter((c) => !c.inside).map((c) => c.pos);
-    this.traffic.update(dt * speed, sim.walkable, this.night, (x, y) => this.power(sim, x, y), walkers);
+    this.traffic.update(dt * speed, sim.drivable, Math.max(this.night, this.ambDark), (x, y) => this.power(sim, x, y), walkers);
 
     this.updateSparks(sim, dt);
     this.drawHazard(ctrl, t);
+    this.scenes.update(sim, t, dt * (speed > 0 ? 1 : 0.0001), Math.max(this.night, this.ambDark));
     this.drawCitizens(ctrl, t, dt);
     this.drawPath(ctrl);
   }
@@ -821,6 +835,18 @@ export class CityRenderer {
     if (sim.scenario === 'blackout') {
       if (sim.tick >= BLACKOUT_TICK - 12) once('outage', () => this.focusTile(SUBSTATION.x, SUBSTATION.y - 2, 1.3, 1500));
       if (sim.tick >= BLACKOUT_TICK + 55) once('wide', () => this.focusTile(10.5, 10.5, 1, 3000));
+    }
+    if (sim.scenario === 'building_fire') {
+      if (sim.tick >= FIRE_SMOKE_TICK - 10) once('smoke', () => this.focusTile(FIRE_CENTER.x, FIRE_CENTER.y + 1, 1.35, 2200));
+      if (sim.tick >= FIRE_IGNITE_TICK + 90) once('wide', () => this.focusTile(14, 11, 1.1, 2600));
+    }
+    if (sim.scenario === 'flash_flood') {
+      if (sim.tick >= FLOOD_RISE_TICK - 10) once('basin', () => this.focusTile(FLOOD_BASIN.x + 2, FLOOD_BASIN.y - 2, 1.3, 2400));
+      if (sim.tick >= FLOOD_RISE_TICK + 260) once('wide', () => this.focusTile(10.5, 10.5, 1, 2800));
+    }
+    if (sim.scenario === 'street_festival') {
+      if (sim.tick >= 5) once('plaza', () => this.focusTile(8.3, 10.3, 1.45, 2400));
+      if (sim.tick >= FEST_OPEN_TICK + 160) once('wide', () => this.focusTile(10.5, 10.5, 1, 2800));
     }
   }
 
@@ -846,6 +872,7 @@ export class CityRenderer {
     for (const e of this.embers) e.s.visible = false;
     for (const s of this.sparks) { s.s.visible = false; s.life = 0; }
     this.repairDrawn = false;
+    this.scenes.reset();
     this.crater.scale.set(1);
     this.crater.pivot.set(0, 0);
     this.crater.position.set(0, 0);
@@ -1083,6 +1110,12 @@ export class CityRenderer {
       v.alert.visible = c.needsHelp;
       if (c.needsHelp) v.alert.y = Math.sin(t * 5) * 1.5;
       if (c.helpingId && !c.path.length) v.body.rotation = Math.sin(t * 6) * 0.12; // tending to someone
+      if (c.festivalUntil !== null && !c.path.length && !this.reducedMotion) {
+        // dancing at the festival
+        v.body.y = -Math.abs(Math.sin(t * Math.PI * 2 + Number(c.id.slice(-2)))) * 2.2;
+        v.body.rotation = Math.sin(t * 3 + Number(c.id.slice(-2))) * 0.1;
+      }
+      this.drawCue(v.cue, c, sim.tick, t);
 
       const d = c.lastDecision;
       if (d && d.id !== v.lastDecisionId) {
@@ -1132,6 +1165,36 @@ export class CityRenderer {
       v.label.style.fill = nightUi ? 0xffffff : 0x1b303d;
       v.label.style.stroke = { color: nightUi ? 0x14263e : 0xffffff, width: 3 };
       v.label.y = v.bubble.visible ? -52 : -27;
+    }
+  }
+
+  /** Small status cues on a citizen: injury plaster, reunion heart, warning megaphone rings, "just warned" flash, safety-rule shield. */
+  private drawCue(g: Graphics, c: Citizen, tick: number, t: number) {
+    g.clear();
+    const recent = (at: number | null, span: number) => (at !== null && tick - at >= 0 && tick - at < span ? 1 - (tick - at) / span : 0);
+    if (c.injury !== 'none' && !c.needsHelp) {
+      g.circle(7, -17, 4.2).fill(0xffffff).circle(7, -17, 4.2).stroke({ width: 1, color: 0xd94f86 });
+      g.rect(6.2, -19.6, 1.6, 5.2).fill(0xd94f86).rect(4.4, -17.8, 5.2, 1.6).fill(0xd94f86);
+    }
+    const heart = recent(c.reunionTick, 40);
+    if (heart > 0) {
+      const y = -40 - (1 - heart) * 10, s = 1 + Math.sin((1 - heart) * Math.PI) * 0.25;
+      g.circle(-2.6 * s, y - 1, 3 * s).fill({ color: 0xff5c8a, alpha: heart }).circle(2.6 * s, y - 1, 3 * s).fill({ color: 0xff5c8a, alpha: heart });
+      g.poly([-5.4 * s, y, 5.4 * s, y, 0, y + 6 * s]).fill({ color: 0xff5c8a, alpha: heart });
+    }
+    const gave = recent(c.warnGaveTick, 30);
+    if (gave > 0) for (let k = 0; k < 3; k++) {
+      const r = ((1 - gave) * 3 + k * 0.33) % 1;
+      g.ellipse(0, 0, 8 + r * 30, (8 + r * 30) / 2).stroke({ width: 2, color: 0xe9b824, alpha: (1 - r) * gave });
+    }
+    const got = recent(c.warnedTick, 30);
+    if (got > 0) {
+      g.circle(0, -33, 5.5).fill({ color: 0xe9b824, alpha: got }).rect(-0.8, -36, 1.6, 3.6).fill({ color: 0x1b303d, alpha: got }).circle(0, -31, 0.9).fill({ color: 0x1b303d, alpha: got });
+    }
+    const safe = recent(c.safetyTick, 30);
+    if (safe > 0) {
+      const y = -38 + Math.sin(t * 6) * 0.5;
+      g.poly([-5, y - 5, 5, y - 5, 5, y + 1, 0, y + 6, -5, y + 1]).fill({ color: 0x4f9d63, alpha: safe }).poly([-2.4, y - 0.6, -0.6, y + 1.4, 2.8, y - 2.6]).stroke({ width: 1.4, color: 0xffffff, alpha: safe });
     }
   }
 

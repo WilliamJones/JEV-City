@@ -35,5 +35,32 @@ export function drawActionIcon(g: Graphics, a: ActionId, color: number) {
     case 'wait':
       for (const x of [-3.5, 0, 3.5]) g.circle(x, 0, 1.4).fill(color);
       break;
+    case 'seek_medical_care':
+      // a plaster
+      g.roundRect(-5.5, -2.4, 11, 4.8, 2.4).fill(color);
+      g.rect(-1.8, -2.4, 3.6, 4.8).fill(0xffffff);
+      for (const [x, y] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) g.circle(x, y, 0.45).fill(color);
+      break;
+    case 'move_away_from_hazard':
+      // double chevron pointing away
+      g.poly([-5, -4, -1.5, 0, -5, 4, -3, 4, 0.5, 0, -3, -4]).fill(color);
+      g.poly([0, -4, 3.5, 0, 0, 4, 2, 4, 5.5, 0, 2, -4]).fill(color);
+      break;
+    case 'check_on_family':
+      // adult + child
+      g.circle(-2, -3.2, 1.9).fill(color).circle(2.8, -0.8, 1.5).fill(color);
+      g.roundRect(-4, -1, 4, 6, 1.6).fill(color).roundRect(1.3, 1, 3, 4, 1.2).fill(color);
+      break;
+    case 'warn_others':
+      // megaphone
+      g.poly([-5, -1.6, -1, -1.6, 4.5, -4.5, 4.5, 4.5, -1, 1.6, -5, 1.6]).fill(color);
+      g.rect(-3, 1.6, 1.8, 2.6).fill(color);
+      break;
+    case 'attend_festival':
+      // music note
+      g.circle(-2.4, 3, 2).fill(color).circle(3, 1.8, 2).fill(color);
+      g.rect(-0.9, -4.5, 1.4, 7.5).fill(color).rect(4.5, -5.7, 1.4, 7.5).fill(color);
+      g.poly([-0.9, -4.5, 5.9, -5.7, 5.9, -3.6, -0.9, -2.4]).fill(color);
+      break;
   }
 }

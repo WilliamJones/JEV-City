@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { ActionGlyph } from './ActionGlyph';
 
-const KEY = 'jev-city-welcomed-v1';
+const KEY = 'jev-city-welcomed-v2';
 
 /** First-visit orientation card. Remembered per browser; works without storage too. */
 export function Welcome({ onHelp, onTour, onVisible }: { onHelp: () => void; onTour: () => void; onVisible: (v: boolean) => void }) {
@@ -30,7 +30,7 @@ export function Welcome({ onHelp, onTour, onVisible }: { onHelp: () => void; onT
         <ul className="mt-4 space-y-2.5 text-sm">
           <li className="flex gap-3"><span className="mt-0.5 flex gap-0.5"><ActionGlyph action="help_neighbor" /><ActionGlyph action="go_home" /></span><span><b>Bubbles</b> pop up above people when they make a decision. Each icon is an action.</span></li>
           <li className="flex gap-3"><span className="grid h-[18px] w-[38px] shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: 'var(--teal)' }}>click</span><span><b>Click anyone</b> to see exactly what JEV returned: the options, their probabilities, and why.</span></li>
-          <li className="flex gap-3"><span className="grid h-[18px] w-[38px] shrink-0 place-items-center rounded-full text-[10px] font-bold" style={{ background: 'var(--chip)' }}>☄︎ ⚡︎</span><span><b>Switch scenarios</b> at the top — a meteor strike, a blackout, or an ordinary morning.</span></li>
+          <li className="flex gap-3"><span className="grid h-[18px] w-[38px] shrink-0 place-items-center rounded-full text-[10px] font-bold" style={{ background: 'var(--chip)' }}>♨︎ ☂︎</span><span><b>Switch scenarios</b> at the top — an office fire, a flash flood, a street festival, a meteor, a blackout or an ordinary morning. People warn each other, look for family, get treated at the clinic and join the festival.</span></li>
           <li className="flex gap-3"><span className="grid h-[18px] w-[38px] shrink-0 place-items-center rounded-full text-[10px] font-bold" style={{ background: 'var(--chip)' }}>?</span><span>Press <b>?</b> any time for the full guide, or <b>L</b> for the map legend.</span></li>
         </ul>
         <p className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--chip)', color: 'var(--ink-soft)' }}>

@@ -1,16 +1,16 @@
 import { argmax, ruleWeights } from './rules';
-import type { ActionId, DecisionResultV1, JevAnswers } from './types';
+import type { ActionId, DecisionResult, JevAnswers } from './types';
 import type { DecisionRequest } from './world';
 
 const base = (req: DecisionRequest) => ({
   id: req.key,
-  contractVersion: 'jev-city-decision-v1' as const,
+  contractVersion: 'jev-city-decision-v2' as const,
   scenario: req.input.scenario,
   citizenId: req.citizenId,
   simulatedAtMinute: req.input.simulationMinute,
 });
 
-export function rulesDecision(req: DecisionRequest, provenance: 'rules' | 'fallback' = 'rules', errorClass?: string): DecisionResultV1 {
+export function rulesDecision(req: DecisionRequest, provenance: 'rules' | 'fallback' = 'rules', errorClass?: string): DecisionResult {
   const w = ruleWeights(req.input, req.seq);
   const top = argmax(w) as ActionId;
   return {
@@ -41,7 +41,7 @@ export function jevDecision(
   requestedModel: string,
   upstreamRoundTripMs: number,
   estimatedApiCostUsd: number | null,
-): DecisionResultV1 {
+): DecisionResult {
   const top = v.answers.next_action.choice as ActionId;
   return {
     ...base(req),
@@ -66,6 +66,6 @@ export function jevDecision(
 }
 
 /** A recorded live decision replayed: provenance flips to 'recorded'; timings are historical. */
-export function asReplayed(d: DecisionResultV1): DecisionResultV1 {
+export function asReplayed(d: DecisionResult): DecisionResult {
   return { ...d, engine: 'recording', provenance: 'recorded', metrics: { ...d.metrics, status: 'replayed' } };
 }

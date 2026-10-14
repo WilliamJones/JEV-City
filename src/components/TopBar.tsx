@@ -12,7 +12,7 @@ export const MODE_BADGE: Record<Mode, { label: string; color: string }> = {
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
-const SCENARIO_ICON: Record<ScenarioId, string> = { ordinary_morning: '☀︎', blackout: '⚡︎', meteor: '☄︎' };
+export const SCENARIO_ICON: Record<ScenarioId, string> = { ordinary_morning: '☀︎', blackout: '⚡︎', meteor: '☄︎', building_fire: '♨︎', street_festival: '♫', flash_flood: '☂︎' };
 
 export function TopBar({ ctrl, onScenario, onMode, liveAvailable, onHelp }: { ctrl: Controller; onScenario: (s: ScenarioId) => void; onMode: (m: Mode) => void; liveAvailable: boolean; onHelp: () => void }) {
   const badge = MODE_BADGE[ctrl.mode];
@@ -37,11 +37,12 @@ export function TopBar({ ctrl, onScenario, onMode, liveAvailable, onHelp }: { ct
             key={s}
             onClick={() => onScenario(s)}
             aria-pressed={ctrl.scenario === s}
-            className="rounded-full px-3 py-1 text-xs font-semibold transition-colors"
+            title={SCENARIO_META[s].title}
+            className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
             style={ctrl.scenario === s ? { background: 'var(--panel-solid)', color: 'var(--ink)', boxShadow: 'var(--shadow)' } : { color: 'var(--ink-soft)' }}
           >
             <span aria-hidden className="mr-1">{SCENARIO_ICON[s]}</span>
-            {SCENARIO_META[s].title}
+            {SCENARIO_META[s].short}
           </button>
         ))}
       </nav>

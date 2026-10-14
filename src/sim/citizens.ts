@@ -1,6 +1,6 @@
 import { buildingById, BUILDINGS, type Tile } from './map';
 import { createRng, round2 } from './rng';
-import type { ActionId, DecisionResultV1, Needs, Plan, Role, Traits } from './types';
+import type { ActionId, AlertSource, DecisionResult, Injury, Needs, Plan, Role, Traits } from './types';
 
 export type CitizenSeed = {
   id: string;
@@ -31,8 +31,29 @@ export type Citizen = CitizenSeed & {
   helpingId: string | null;
   helpProgress: number;
   inside: string | null;
-  lastDecision: DecisionResultV1 | null;
+  lastDecision: DecisionResult | null;
   facing: 1 | -1;
+  /** Health (sim v6). Major injuries leave the citizen stranded until someone helps. */
+  injury: Injury;
+  care: 'none' | 'queued' | 'treating';
+  careUntil: number;
+  /** What the citizen knows about the current hazard, and from whom. */
+  alert: AlertSource;
+  alertFromId: string | null;
+  alertTick: number | null;
+  /** Ticks spent inside dense smoke (smoke inhalation after a while). */
+  exposure: number;
+  /** Target of check_on_family / warn_others while that task is under way. */
+  taskTargetId: string | null;
+  warnCooldownUntil: number;
+  /** Household contact log: last time each housemate was seen, and where they were believed to be. */
+  family: Record<string, { lastContactTick: number; lastKnown: Tile | null; place: string | null }>;
+  festivalUntil: number | null;
+  /** Visual cues (renderer only reads these; they never feed back into decisions). */
+  reunionTick: number | null;
+  warnedTick: number | null;
+  warnGaveTick: number | null;
+  safetyTick: number | null;
 };
 
 const NAMES: [string, number][] = [
@@ -116,6 +137,21 @@ export function spawnCitizen(s: CitizenSeed, start: Tile, plan: Plan, needs: Nee
     inside: null,
     lastDecision: null,
     facing: 1,
+    injury: 'none',
+    care: 'none',
+    careUntil: 0,
+    alert: 'none',
+    alertFromId: null,
+    alertTick: null,
+    exposure: 0,
+    taskTargetId: null,
+    warnCooldownUntil: 0,
+    family: {},
+    festivalUntil: null,
+    reunionTick: null,
+    warnedTick: null,
+    warnGaveTick: null,
+    safetyTick: null,
   };
 }
 

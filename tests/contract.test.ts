@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildJevRequest, CitizenDecisionInputSchema, validateJevResponse } from '@/jev/contract';
-import type { ActionId, CitizenDecisionInputV1 } from '@/sim/types';
+import type { ActionId, CitizenDecisionInput } from '@/sim/types';
 
 const reqFixture = JSON.parse(readFileSync('docs/fixtures/jev-request.example.json', 'utf8'));
 const resFixture = JSON.parse(readFileSync('docs/fixtures/jev-response.synthetic.json', 'utf8'));
-const input = reqFixture.state as CitizenDecisionInputV1;
+const input = reqFixture.state as CitizenDecisionInput;
 const eligible = input.eligibleActionIds as ActionId[];
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 

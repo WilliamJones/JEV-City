@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { asReplayed, rulesDecision } from '@/sim/decisions';
-import { SCENARIOS, type DecisionResultV1, type ScenarioId } from '@/sim/types';
+import { SCENARIOS, type DecisionResult, type ScenarioId } from '@/sim/types';
 import { SIM_VERSION, Simulation } from '@/sim/world';
 
 function run(scenario: ScenarioId, ticks: number, provide: (s: Simulation) => void) {
@@ -28,7 +28,7 @@ describe('F01 seeding and determinism', () => {
 
   it.each(SCENARIOS)('%s: recording reproduces the live run exactly (order + state hashes)', (sc) => {
     const log = JSON.parse(readFileSync(`public/replays/${sc}.json`, 'utf8')) as {
-      decisions: DecisionResultV1[]; ticks: number; simVersion: number; checkpoints: Record<string, string>; appliedOrder: string[];
+      decisions: DecisionResult[]; ticks: number; simVersion: number; checkpoints: Record<string, string>; appliedOrder: string[];
     };
     expect(log.simVersion, 'recording is stale — run `npm run record`').toBe(SIM_VERSION);
     expect(Object.keys(log.checkpoints).length).toBeGreaterThanOrEqual(7);
@@ -84,7 +84,7 @@ describe('F02 physically plausible actions', () => {
     while (sim.tick < 1500) {
       for (const r of sim.outbox.splice(0)) {
         expect(r.input.eligibleActionIds.length).toBeGreaterThanOrEqual(2);
-        expect(r.input.eligibleActionIds).toContain('wait');
+        if (r.input.local.hazard !== 'immediate' && sim.trueHazardAt(sim.citizen(r.citizenId).tile) !== 'immediate') expect(r.input.eligibleActionIds).toContain('wait');
         sim.provide(r.key, rulesDecision(r));
       }
       sim.step();
