@@ -24,6 +24,7 @@ export function TopBar({ ctrl, onScenario, onMode, liveAvailable }: { ctrl: Cont
         </h1>
         <span className="hidden text-xs xl:inline" style={{ color: 'var(--ink-soft)' }}>The little city with big decisions</span>
       </div>
+      <a href="/benchmark" className="text-xs font-semibold underline-offset-2 hover:underline" style={{ color: 'var(--teal)' }}>Benchmark →</a>
 
       <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wider text-white" style={{ background: badge.color }} role="status" aria-live="polite">
         <span className={`inline-block h-1.5 w-1.5 rounded-full bg-white ${ctrl.mode === 'live' ? 'live-dot' : ''}`} />
