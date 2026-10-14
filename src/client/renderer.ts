@@ -634,6 +634,8 @@ export class CityRenderer {
     const left = iso(-0.5, MAP_H - 0.5).x, right = iso(MAP_W - 0.5, -0.5).x;
     const top = iso(-0.5, -0.5).y - 60, bottom = iso(MAP_W - 0.5, MAP_H - 0.5).y + 50;
     this.fitScale = Math.min(w / (right - left + 40), h / (bottom - top + 20));
+    // Portrait screens: the diorama is wide, so fill more of the height (visitors can pan).
+    if (h > w * 1.1) this.fitScale *= Math.min(1.6, h / w);
     this.applyCamera();
   }
 
