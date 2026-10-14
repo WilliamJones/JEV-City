@@ -301,7 +301,7 @@ export class CityRenderer {
     if (b.kind === 'shelter' || b.kind === 'clinic') {
       badge = new Text({ text: '', style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 11, fontWeight: '700', fill: 0xffffff } });
       badge.anchor.set(0.5);
-      badge.position.set(roofCenter.x, roofCenter.y - 30);
+      badge.position.set(roofCenter.x, roofCenter.y - 38);
       root.addChild(badge);
     }
 
