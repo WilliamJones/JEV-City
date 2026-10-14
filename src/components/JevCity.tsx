@@ -72,10 +72,10 @@ export default function JevCity() {
   const selected = ctrl.selected;
 
   return (
-    <div className="sky flex h-dvh flex-col gap-3 p-3 lg:p-4">
+    <div className="sky flex min-h-dvh flex-col gap-3 p-3 lg:h-dvh lg:p-4">
       <TopBar ctrl={ctrl} onScenario={changeScenario} onMode={changeMode} liveAvailable={!!liveInfo?.liveEnabled} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        <div className="relative min-h-[360px] flex-1 overflow-hidden rounded-2xl">
+        <div className="relative h-[62vh] min-h-[360px] overflow-hidden rounded-2xl lg:h-auto lg:flex-1">
           <div ref={canvasRef} className="absolute inset-0" aria-label="Isometric city simulation. Use the citizen list in the side panel for keyboard access." role="img" />
           <div className="vignette pointer-events-none absolute inset-0" aria-hidden />
           {ctrl.currentBeat && <TourCaption ctrl={ctrl} />}
@@ -95,8 +95,8 @@ export default function JevCity() {
             Recenter
           </button>
         </div>
-        <aside className="flex min-h-0 w-full flex-col gap-3 lg:w-[400px] xl:w-[440px]">
-          <div className="panel scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <aside className="flex w-full flex-col gap-3 lg:min-h-0 lg:w-[400px] xl:w-[440px]">
+          <div className="panel scroll-thin lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {selected ? <Inspector ctrl={ctrl} citizen={selected} /> : <Overview ctrl={ctrl} />}
           </div>
           <EventFeed ctrl={ctrl} />
