@@ -1,0 +1,78 @@
+{
+  "model": "jev-1.13.0",
+  "state": {
+    "contractVersion": "jev-city-decision-v1",
+    "scenario": "blackout",
+    "seed": 2401,
+    "simulationMinute": 1130,
+    "citizen": {
+      "id": "citizen-07",
+      "role": "healthcare",
+      "locationId": "market-square-east",
+      "currentPlan": "travel_to_clinic",
+      "traits": {
+        "caution": 0.67,
+        "altruism": 0.91,
+        "sociability": 0.53
+      },
+      "needs": {
+        "fatigue": 0.62,
+        "supplies": 0.18
+      }
+    },
+    "local": {
+      "blackout": true,
+      "hazard": "nearby",
+      "nearbyPersonNeedsHelp": true,
+      "clinicOperational": true,
+      "reachableHome": true,
+      "reachableShelter": true,
+      "shopAvailable": false,
+      "isOnDuty": true
+    },
+    "eligibleActionIds": [
+      "go_home",
+      "seek_shelter",
+      "help_neighbor",
+      "report_for_duty",
+      "wait"
+    ]
+  },
+  "questions": {
+    "next_action": {
+      "type": "choice",
+      "instructions": "For this simulated citizen, which eligible next action best matches their current circumstances, needs, role and traits? Use only the supplied eligible actions; do not assume unstated paths or capabilities.",
+      "criteria": {
+        "go_home": "Return to the citizen's home using a reachable route.",
+        "seek_shelter": "Travel to a reachable designated safe building.",
+        "help_neighbor": "Help a nearby person explicitly flagged as needing assistance.",
+        "report_for_duty": "Travel to the assigned emergency or healthcare post when currently on duty.",
+        "wait": "Stay at a safe location and re-evaluate later."
+      }
+    },
+    "perceived_risk": {
+      "type": "score",
+      "instructions": "How much immediate personal danger would this citizen perceive from the local situation? Evaluate perceived danger, not objective map danger or action feasibility.",
+      "criteria": [
+        "No credible immediate threat to this citizen.",
+        "Mild concern or a distant disruption, but personally safe now.",
+        "Near or consequential threat; the citizen is worried and may need to act.",
+        "Direct, immediate danger to this citizen at their present location."
+      ]
+    },
+    "duty_pressure": {
+      "type": "score",
+      "instructions": "How strongly do this citizen's current role and nearby dependents create an immediate responsibility to help others? Do not treat general fear as duty.",
+      "criteria": [
+        "No immediate obligation or person relying on this citizen.",
+        "Helping is optional; no one is specifically depending on the citizen.",
+        "A nearby individual or existing responsibility creates meaningful pressure to assist.",
+        "This citizen has explicit emergency-duty responsibilities and immediate people depending on them."
+      ]
+    },
+    "would_interrupt_routine": {
+      "type": "noul",
+      "instructions": "Given current local conditions and this citizen's traits, is this citizen likely to abandon their ordinary routine during the next decision interval?"
+    }
+  }
+}

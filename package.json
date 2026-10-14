@@ -9,10 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@upstash/redis": "^1.35.3",
     "next": "15.5.4",
     "pixi.js": "^8.6.6",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -23,6 +25,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
     "tailwindcss": "^4",
+    "tsx": "^4.20.5",
     "typescript": "^5",
     "vitest": "^3.2.4"
   }

@@ -1,0 +1,59 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "next_action": {
+      "type": "choice",
+      "choice": "help_neighbor",
+      "probabilities": {
+        "go_home": 0.18,
+        "seek_shelter": 0.11,
+        "help_neighbor": 0.52,
+        "report_for_duty": 0.14,
+        "wait": 0.05
+      },
+      "confidence": 0.42
+    },
+    "perceived_risk": {
+      "type": "score",
+      "score": 1.95,
+      "legend": {
+        "0": "No credible immediate threat to this citizen.",
+        "1": "Mild concern or a distant disruption, but personally safe now.",
+        "2": "Near or consequential threat; the citizen is worried and may need to act.",
+        "3": "Direct, immediate danger to this citizen at their present location."
+      },
+      "probabilities": {
+        "0": 0.05,
+        "1": 0.15,
+        "2": 0.6,
+        "3": 0.2
+      },
+      "confidence": 0.5
+    },
+    "duty_pressure": {
+      "type": "score",
+      "score": 2.44,
+      "legend": {
+        "0": "No immediate obligation or person relying on this citizen.",
+        "1": "Helping is optional; no one is specifically depending on the citizen.",
+        "2": "A nearby individual or existing responsibility creates meaningful pressure to assist.",
+        "3": "This citizen has explicit emergency-duty responsibilities and immediate people depending on them."
+      },
+      "probabilities": {
+        "0": 0.03,
+        "1": 0.1,
+        "2": 0.27,
+        "3": 0.6
+      },
+      "confidence": 0.62
+    },
+    "would_interrupt_routine": {
+      "type": "noul",
+      "noul": 0.93
+    }
+  },
+  "usage": {
+    "input_tokens": 420,
+    "output_tokens": 100
+  }
+}
