@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { callJev, estimateCostUsd } from '../src/jev/client';
 import { PINNED_MODEL } from '../src/jev/contract';
 import { jevDecision, rulesDecision } from '../src/sim/decisions';
-import { Simulation, SCENARIO_META } from '../src/sim/world';
+import { Simulation, SCENARIO_META, SIM_VERSION } from '../src/sim/world';
 import { SCENARIOS, type DecisionResultV1, type ScenarioId } from '../src/sim/types';
 
 for (const line of readFileSync('.env.local', 'utf8').split('\n')) {
@@ -73,6 +73,7 @@ async function main() {
       mkdirSync(OUT, { recursive: true });
       const log = {
         format: 'jev-city-replay-v1',
+        simVersion: SIM_VERSION,
         scenario: sc,
         title: SCENARIO_META[sc].title,
         seed: SEED,

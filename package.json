@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "record": "tsx scripts/record.ts --ticks 2400 --out public/replays"
   },
   "dependencies": {
     "@upstash/redis": "^1.35.3",

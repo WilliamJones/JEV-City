@@ -10,6 +10,8 @@ import type {
   ScenarioId,
 } from './types';
 
+/** Bump whenever simulation behavior changes; recordings must be re-captured to match. */
+export const SIM_VERSION = 3;
 export const TICK_MS = 100;
 export const MINUTES_PER_TICK = 0.1;
 /** Fixed logical "think time": a decision requested at tick t is applied at t + THINK_TICKS. */
@@ -168,6 +170,12 @@ export class Simulation {
           .filter((c) => !c.inside)
           .sort((a, b) => this.distToHazard(a.tile) - this.distToHazard(b.tile) || a.id.localeCompare(b.id));
         for (const c of this.citizens) if (!this.walkable[c.tile.y][c.tile.x]) this.evacuateTile(c);
+        // Re-route anyone whose planned path now crosses the closure.
+        for (const c of this.citizens) {
+          if (!c.path.some((p) => !this.walkable[p.y][p.x])) continue;
+          const dest = c.path[c.path.length - 1];
+          c.path = findPath(this.walkable, c.tile, dest) ?? [];
+        }
         this.strand(byDist.slice(0, 3).map((c) => c.id), 'is shaken and stranded near the crater');
         this.interruptAll();
       }
