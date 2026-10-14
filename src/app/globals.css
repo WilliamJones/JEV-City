@@ -83,6 +83,14 @@ body {
   opacity: 0.7;
 }
 
+.vignette {
+  background: radial-gradient(120% 95% at 50% 45%, transparent 55%, rgba(20, 38, 62, 0.1) 100%);
+  transition: background 1s ease;
+}
+[data-theme="night"] .vignette {
+  background: radial-gradient(110% 90% at 50% 45%, transparent 45%, rgba(5, 10, 22, 0.55) 100%);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--panel-border);

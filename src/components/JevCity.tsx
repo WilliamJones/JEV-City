@@ -31,6 +31,7 @@ export default function JevCity() {
       renderer = new CityRenderer();
       rendererRef.current = renderer;
       renderer.onSelect = (id) => { ctrl.selectedId = id; ctrl.notify(true); };
+      if (process.env.NODE_ENV !== 'production') (window as unknown as { __jevR: CityRenderer }).__jevR = renderer;
       await renderer.init(canvasRef.current, ctrl);
       ctrl.start();
     })();
@@ -71,6 +72,7 @@ export default function JevCity() {
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         <div className="relative min-h-[360px] flex-1 overflow-hidden rounded-2xl">
           <div ref={canvasRef} className="absolute inset-0" aria-label="Isometric city simulation. Use the citizen list in the side panel for keyboard access." role="img" />
+          <div className="vignette pointer-events-none absolute inset-0" aria-hidden />
           {ctrl.fallbackReason && (
             <div className="panel absolute left-3 top-3 max-w-md px-3 py-2 text-xs font-medium" role="status">
               <span className="mr-1 font-bold" style={{ color: 'var(--coral)' }}>FALLBACK</span>

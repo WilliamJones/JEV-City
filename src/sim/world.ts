@@ -42,11 +42,11 @@ export const SCENARIO_META: Record<ScenarioId, { title: string; startMinute: num
   meteor: { title: 'Meteor Near the Market', startMinute: 12 * 60 + 30, night: false, blurb: 'A fragment lands by the market.' },
 };
 
-const BLACKOUT_TICK = 60;
-const POWER_RESTORED_TICK = 1700;
-const METEOR_WARN_TICK = 50;
-const METEOR_IMPACT_TICK = 90;
-const METEOR_CENTER = { x: 9, y: 11 };
+export const BLACKOUT_TICK = 60;
+export const POWER_RESTORED_TICK = 1700;
+export const METEOR_WARN_TICK = 50;
+export const METEOR_IMPACT_TICK = 90;
+export const METEOR_CENTER = { x: 9, y: 11 };
 const METEOR_RADIUS = 2.3;
 
 export class Simulation {
