@@ -1,5 +1,5 @@
-import { createPopulation, homeDoor, spawnCitizen, workDoor, type Citizen } from './citizens';
-import { BUILDINGS, buildBaseWalkable, buildingById, elevation, findPath, locationIdFor, MAP_H, MAP_W, placeLabel, reachMap, type Tile } from './map';
+import { createPopulation, spawnCitizen, type Citizen } from './citizens';
+import { elevation, findPath, MAP_H, MAP_W, reachMap, STANDARD_MAP, type BuildingKind, type CityMap, type Tile } from './map';
 import { createRng, round2, type Rng } from './rng';
 import type {
   ActionId,
@@ -128,7 +128,8 @@ export class Simulation {
   /** Tick the impact site was cleared and roads reopened (the repaired patch stays visible). */
   clearedTick: number | null = null;
   fire = { phase: 'none' as FirePhase, intensity: 0, progress: 0, containedTick: null as number | null, respondersOnSite: 0, engine: { x: ENGINE_ROUTE[0].x, y: ENGINE_ROUTE[0].y, seg: 0, dispatched: false, arrived: false } };
-  flood = { phase: 'none' as FloodPhase, rain: 0, level: -1, depth: new Float32Array(MAP_W * MAP_H), wetDist: new Float32Array(MAP_W * MAP_H).fill(99), version: 0 };
+  flood!: { phase: FloodPhase; rain: number; level: number; depth: Float32Array; wetDist: Float32Array; version: number };
+  readonly map: CityMap;
   festival = { phase: 'none' as FestivalPhase, slots: Array<string | null>(FEST_CAPACITY).fill(null) };
   walkable: boolean[][];
   /** Tiles cars may use (walkable minus the festival road closure, any water and the parked engine). */
@@ -146,10 +147,12 @@ export class Simulation {
   constructor(scenario: ScenarioId, seed: number) {
     this.scenario = scenario;
     this.seed = seed;
+    this.map = STANDARD_MAP;
+    this.flood = { phase: 'none', rain: 0, level: -1, depth: new Float32Array(this.W * this.H), wetDist: new Float32Array(this.W * this.H).fill(99), version: 0 };
     this.rng = createRng(seed);
-    this.walkable = buildBaseWalkable();
+    this.walkable = this.map.baseWalkable();
     this.drivable = this.walkable.map((r) => [...r]);
-    const pop = createPopulation(seed);
+    const pop = createPopulation(seed, this.map);
     this.citizens = pop.map((s, i) => {
       const start = this.startTile(s.homeId, i);
       let plan: Plan = s.workId ? (s.role === 'healthcare' ? 'travel_to_clinic' : s.role === 'responder' ? 'patrol' : 'commute_to_work') : 'stroll';
@@ -167,8 +170,8 @@ export class Simulation {
     for (const c of this.citizens)
       for (const m of this.citizens)
         if (m !== c && m.homeId === c.homeId) {
-          const where = this.routineTarget(m) ?? homeDoor(m);
-          c.family[m.id] = { lastContactTick: 0, lastKnown: where, place: locationIdFor(where) };
+          const where = this.routineTarget(m) ?? this.homeDoor(m);
+          c.family[m.id] = { lastContactTick: 0, lastKnown: where, place: this.map.locationIdFor(where) };
         }
     if (scenario === 'street_festival') { this.festival.phase = 'setup'; this.updateClosures(); }
     this.log('incident', `${SCENARIO_META[scenario].title} begins.`);
@@ -195,6 +198,22 @@ export class Simulation {
   citizen(id: string) {
     return this.byId.get(id)!;
   }
+  get W() {
+    return this.map.w;
+  }
+  get H() {
+    return this.map.h;
+  }
+  /** Nearest building of a kind to where this citizen is. */
+  near(kind: BuildingKind, c: Citizen) {
+    return this.map.nearest(kind, c.inside ? this.map.building(c.inside).door : c.tile);
+  }
+  homeDoor(c: { homeId: string }) {
+    return this.map.building(c.homeId).door;
+  }
+  workDoor(c: { workId: string | null }) {
+    return c.workId ? this.map.building(c.workId).door : null;
+  }
 
   /** What this citizen knows: everyone sees a blackout or a meteor; fires and floods must be observed or reported. */
   incidentKnown(c: Citizen) {
@@ -203,14 +222,14 @@ export class Simulation {
   }
 
   private startTile(homeId: string, i: number): Tile {
-    const d = buildingById(homeId).door;
+    const d = this.map.building(homeId).door;
     if (this.scenario === 'ordinary_morning') return d;
     // Afternoon/evening: spread people around the district.
     for (let attempt = 0; attempt < 50; attempt++) {
-      const t = { x: this.rng.int(0, MAP_W), y: this.rng.int(0, MAP_H) };
+      const t = { x: this.rng.int(0, this.W), y: this.rng.int(0, this.H) };
       if (this.walkable[t.y][t.x]) return t;
     }
-    return { x: (i * 3) % MAP_W, y: 5 };
+    return { x: (i * 3) % this.W, y: 5 };
   }
 
   private log(kind: SimEvent['kind'], text: string, citizenId?: string, extra: Pick<SimEvent, 'relatedIds' | 'via'> = {}) {
@@ -440,7 +459,7 @@ export class Simulation {
       this.log('incident', 'Official flash-flood warning issued for the low-lying streets.');
       this.citizens.forEach((c) => this.alertCitizen(c, 'official', null, true));
     }
-    const wd = (c: Citizen) => fl.wetDist[c.tile.y * MAP_W + c.tile.x];
+    const wd = (c: Citizen) => fl.wetDist[c.tile.y * this.W + c.tile.x];
     if (t === FLOOD_SLIP_TICK) this.injureFirst(this.outdoorCandidates().filter((c) => wd(c) <= 2.5).sort((a, b) => wd(a) - wd(b) || a.id.localeCompare(b.id)), 1, 'slipped in the floodwater');
     if (t === FLOOD_STRAND_TICK) {
       const cands = this.outdoorCandidates().filter((c) => c.role === 'resident' && this.waterAt(c.tile) <= 0).sort((a, b) => wd(a) - wd(b) || a.id.localeCompare(b.id));
@@ -479,7 +498,7 @@ export class Simulation {
   }
 
   waterAt(t: Tile) {
-    return this.flood.depth[t.y * MAP_W + t.x];
+    return this.flood.depth[t.y * this.W + t.x];
   }
 
   /** Raise or lower the flood. Closures apply in the same tick, before anyone can step onto a newly deep tile. */
@@ -487,21 +506,21 @@ export class Simulation {
     const fl = this.flood;
     fl.level = level;
     let changed = false;
-    for (let y = 0; y < MAP_H; y++)
-      for (let x = 0; x < MAP_W; x++) {
-        const k = y * MAP_W + x;
+    for (let y = 0; y < this.H; y++)
+      for (let x = 0; x < this.W; x++) {
+        const k = y * this.W + x;
         const d = Math.max(0, Math.round((level - elevation(x, y)) * 1000) / 1000);
         if (d !== fl.depth[k]) { fl.depth[k] = d; changed = true; }
       }
     if (!changed) return;
     fl.version++;
     const wet: Tile[] = [];
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) if (fl.depth[y * MAP_W + x] > 0) wet.push({ x, y });
-    for (let y = 0; y < MAP_H; y++)
-      for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.H; y++) for (let x = 0; x < this.W; x++) if (fl.depth[y * this.W + x] > 0) wet.push({ x, y });
+    for (let y = 0; y < this.H; y++)
+      for (let x = 0; x < this.W; x++) {
         let best = 99;
         for (const w of wet) { const d = Math.hypot(w.x - x, w.y - y); if (d < best) best = d; }
-        fl.wetDist[y * MAP_W + x] = best;
+        fl.wetDist[y * this.W + x] = best;
       }
     this.updateClosures();
   }
@@ -521,22 +540,22 @@ export class Simulation {
 
   /** Rebuild walkable/drivable grids from every active closure, then keep people out of newly closed tiles. */
   private updateClosures() {
-    const w = buildBaseWalkable();
-    for (let y = 0; y < MAP_H; y++)
-      for (let x = 0; x < MAP_W; x++) {
+    const w = this.map.baseWalkable();
+    for (let y = 0; y < this.H; y++)
+      for (let x = 0; x < this.W; x++) {
         if (this.hazard && Math.hypot(x - this.hazard.center.x, y - this.hazard.center.y) <= this.hazard.radius) w[y][x] = false;
         if (this.fireCordonUp && this.inFireCordon(x, y)) w[y][x] = false;
-        if (this.flood.depth[y * MAP_W + x] > DEEP) w[y][x] = false;
+        if (this.flood.depth[y * this.W + x] > DEEP) w[y][x] = false;
       }
     if (this.floodActive) {
       // Dry pockets cut off by water count as closed (nobody can reach them; anyone there is moved by the safety rule).
-      const reach = reachMap(w, buildingById('shelter').door);
-      for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) if (w[y][x] && reach[y * MAP_W + x] < 0) w[y][x] = false;
+      const reach = reachMap(w, this.map.building('shelter').door);
+      for (let y = 0; y < this.H; y++) for (let x = 0; x < this.W; x++) if (w[y][x] && reach[y * this.W + x] < 0) w[y][x] = false;
     }
     this.walkable = w;
     const d = w.map((r) => [...r]);
     if (this.festivalRoadClosed) for (let x = FEST_ROAD.x0; x <= FEST_ROAD.x1; x++) d[FEST_ROAD.y][x] = false;
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) if (this.flood.depth[y * MAP_W + x] > 0) d[y][x] = false;
+    for (let y = 0; y < this.H; y++) for (let x = 0; x < this.W; x++) if (this.flood.depth[y * this.W + x] > 0) d[y][x] = false;
     if (this.fire.engine.arrived && this.fireActive) { const e = ENGINE_ROUTE[ENGINE_ROUTE.length - 1]; d[e.y][e.x] = false; d[e.y + 1][e.x] = false; }
     this.drivable = d;
     // Safety rule: nobody stays on (or keeps a route through) a tile that has just closed.
@@ -553,10 +572,10 @@ export class Simulation {
 
   /** Deterministic safety rule: move a citizen to the nearest open tile outside immediate danger. Always labeled. */
   private evacuate(c: Citizen, why: string) {
-    const from = c.inside ? buildingById(c.inside).door : c.tile;
+    const from = c.inside ? this.map.building(c.inside).door : c.tile;
     let best: Tile | null = null, bestD = Infinity;
-    for (let y = 0; y < MAP_H; y++)
-      for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.H; y++)
+      for (let x = 0; x < this.W; x++) {
         if (!this.walkable[y][x] || this.trueHazardAt({ x, y }) === 'immediate') continue;
         const d = Math.hypot(x - from.x, y - from.y);
         if (d < bestD) { bestD = d; best = { x, y }; }
@@ -572,7 +591,7 @@ export class Simulation {
   private strand(ids: string[], why: string, injury: 'none' | 'major') {
     for (const id of ids) {
       const c = this.citizen(id);
-      if (c.inside) { c.tile = buildingById(c.inside).door; c.pos = { ...c.tile }; c.inside = null; }
+      if (c.inside) { c.tile = this.map.building(c.inside).door; c.pos = { ...c.tile }; c.inside = null; }
       c.needsHelp = true;
       c.injury = injury;
       c.path = [];
@@ -607,12 +626,12 @@ export class Simulation {
   private sendAfterHelp(n: Citizen) {
     n.cooldown = 160;
     const reach = reachMap(this.walkable, n.tile);
-    const can = (t: Tile) => reach[t.y * MAP_W + t.x] >= 0;
-    const clinic = buildingById('clinic').door, shelter = buildingById('shelter').door;
-    let to: Tile = homeDoor(n);
+    const can = (t: Tile) => reach[t.y * this.W + t.x] >= 0;
+    const clinic = this.near('clinic', n).door, shelter = this.near('shelter', n).door;
+    let to: Tile = this.homeDoor(n);
     n.actionLabel = 'Heading home';
     if (n.injury !== 'none' && can(clinic)) { to = clinic; n.actionLabel = 'Walking to the clinic'; }
-    else if (!can(homeDoor(n)) || this.trueHazardAt(homeDoor(n)) === 'immediate') { to = shelter; n.actionLabel = 'Heading to the shelter'; }
+    else if (!can(this.homeDoor(n)) || this.trueHazardAt(this.homeDoor(n)) === 'immediate') { to = shelter; n.actionLabel = 'Heading to the shelter'; }
     n.path = findPath(this.walkable, n.tile, to) ?? [];
   }
 
@@ -648,7 +667,7 @@ export class Simulation {
     if (this.floodActive) {
       for (const c of this.citizens) {
         if (c.alert !== 'none' || c.inside) continue;
-        if (this.flood.wetDist[c.tile.y * MAP_W + c.tile.x] <= 3.5) {
+        if (this.flood.wetDist[c.tile.y * this.W + c.tile.x] <= 3.5) {
           this.alertCitizen(c, 'observed', null, true);
           this.log('effect', `${first(c)} noticed water rising in the street.`, c.id, { via: 'sim' });
         }
@@ -676,7 +695,7 @@ export class Simulation {
     }
     if (this.floodActive) {
       if (this.waterAt(t) > 0) return 'immediate';
-      return this.flood.wetDist[t.y * MAP_W + t.x] <= 2 ? 'nearby' : 'distant';
+      return this.flood.wetDist[t.y * this.W + t.x] <= 2 ? 'nearby' : 'distant';
     }
     return 'none';
   }
@@ -697,7 +716,7 @@ export class Simulation {
   perceivedHazard(c: Citizen): { level: HazardLevel; kind: HazardKind } {
     const kind = this.hazardKind();
     if (kind === 'none' || ((kind === 'fire' || kind === 'flood') && c.alert === 'none')) return { level: 'none', kind: 'none' };
-    return { level: this.trueHazardAt(c.inside ? buildingById(c.inside).door : c.tile), kind };
+    return { level: this.trueHazardAt(c.inside ? this.map.building(c.inside).door : c.tile), kind };
   }
 
   // ------------------------------------------------------------------ decision support queries
@@ -708,7 +727,7 @@ export class Simulation {
       if (o === c || !o.needsHelp) continue;
       if (this.citizens.some((h) => h !== c && h.helpingId === o.id)) continue;
       const d = Math.hypot(o.tile.x - c.tile.x, o.tile.y - c.tile.y);
-      if (d < bestD && reach[o.tile.y * MAP_W + o.tile.x] >= 0) { bestD = d; best = o; }
+      if (d < bestD && reach[o.tile.y * this.W + o.tile.x] >= 0) { bestD = d; best = o; }
     }
     return best;
   }
@@ -717,16 +736,17 @@ export class Simulation {
     return true; // corner store stays open (lantern-lit during blackout)
   }
 
-  clinicLoad() {
-    const staff = this.citizens.filter((c) => c.role === 'healthcare' && c.inside === 'clinic' && c.care === 'none').length;
+  /** Load of one clinic (defaults to the first clinic; the standard district has exactly one). */
+  clinicLoad(clinicId = this.map.ofKind('clinic')[0].id) {
+    const staff = this.citizens.filter((c) => c.role === 'healthcare' && c.inside === clinicId && c.care === 'none').length;
     const capacity = CLINIC_BASE_CAPACITY + Math.min(3, staff);
-    const treating = this.citizens.filter((c) => c.care === 'treating').length;
-    const queued = this.citizens.filter((c) => c.care === 'queued').length;
+    const treating = this.citizens.filter((c) => c.care === 'treating' && c.inside === clinicId).length;
+    const queued = this.citizens.filter((c) => c.care === 'queued' && c.inside === clinicId).length;
     return { capacity, treating, queued, staff };
   }
 
-  private clinicStatus(): 'open' | 'busy' | 'closed' {
-    const l = this.clinicLoad();
+  private clinicStatus(c: Citizen): 'open' | 'busy' | 'closed' {
+    const l = this.clinicLoad(this.near('clinic', c).id);
     return l.queued > 0 || l.treating >= l.capacity ? 'busy' : 'open';
   }
 
@@ -736,30 +756,30 @@ export class Simulation {
       case 'at_work':
       case 'travel_to_clinic':
       case 'patrol': {
-        const w = workDoor(c);
-        if (!w) return homeDoor(c);
+        const w = this.workDoor(c);
+        if (!w) return this.homeDoor(c);
         if (this.blackout && (c.workId === 'office' || c.workId === 'market')) return null;
         if (this.fireActive && c.workId === 'office') return null;
         return w;
       }
       case 'go_shopping':
-        return this.blackout ? buildingById('shop').door : buildingById('market').door;
+        return this.blackout ? this.near('shop', c).door : this.near('market', c).door;
       case 'stroll': {
         const spots: Tile[] = [{ x: 9, y: 10 }, { x: 3, y: 5 }, { x: 15, y: 11 }, { x: 10, y: 17 }, { x: 18, y: 5 }, { x: 4, y: 12 }];
         const s = spots[(Number(c.id.slice(-2)) + c.decisionSeq) % spots.length];
-        return this.walkable[s.y][s.x] ? s : homeDoor(c);
+        return this.walkable[s.y][s.x] ? s : this.homeDoor(c);
       }
       case 'at_home':
-        return homeDoor(c);
+        return this.homeDoor(c);
     }
   }
 
   /** Nearest reachable tile (by walking distance) that is outside the danger. */
   private safeSpot(reach: Int16Array): Tile | null {
     let best: Tile | null = null, bestD = Infinity;
-    for (let y = 0; y < MAP_H; y++)
-      for (let x = 0; x < MAP_W; x++) {
-        const d = reach[y * MAP_W + x];
+    for (let y = 0; y < this.H; y++)
+      for (let x = 0; x < this.W; x++) {
+        const d = reach[y * this.W + x];
         if (d < 0 || d >= bestD) continue;
         const lv = this.trueHazardAt({ x, y });
         if (lv !== 'distant' && lv !== 'none') continue;
@@ -774,7 +794,7 @@ export class Simulation {
     if (!this.incidentKnown(c)) return [];
     const since = this.incidentStartTick;
     return Object.entries(c.family)
-      .filter(([, f]) => f.lastContactTick < since && f.lastKnown && reach[f.lastKnown.y * MAP_W + f.lastKnown.x] >= 0 && this.trueHazardAt(f.lastKnown) !== 'immediate')
+      .filter(([, f]) => f.lastContactTick < since && f.lastKnown && reach[f.lastKnown.y * this.W + f.lastKnown.x] >= 0 && this.trueHazardAt(f.lastKnown) !== 'immediate')
       .sort((a, b) => a[1].lastContactTick - b[1].lastContactTick || a[0].localeCompare(b[0]))
       .map(([id]) => this.citizen(id));
   }
@@ -786,7 +806,7 @@ export class Simulation {
 
   /** Where someone can be found: their tile, or the door of the building they are in. */
   private spotOf(o: Citizen): Tile {
-    return o.inside ? buildingById(o.inside).door : o.tile;
+    return o.inside ? this.map.building(o.inside).door : o.tile;
   }
 
   /** Closest (by walking distance) person who hasn't heard about the hazard, within a short walk. */
@@ -796,7 +816,7 @@ export class Simulation {
     for (const o of this.citizens) {
       if (o === c || o.alert !== 'none') continue;
       const s = this.spotOf(o);
-      const d = reach[s.y * MAP_W + s.x];
+      const d = reach[s.y * this.W + s.x];
       if (d < 0 || d > bestD || (d === bestD && best && o.id > best.id)) continue;
       bestD = d;
       best = o;
@@ -811,19 +831,19 @@ export class Simulation {
   /** Deterministic engine gate (PRD F02). JEV only ever chooses among these. */
   getEligibleActions(c: Citizen): ActionId[] {
     const reach = reachMap(this.walkable, c.tile);
-    const can = (t: Tile) => reach[t.y * MAP_W + t.x] >= 0;
+    const can = (t: Tile) => reach[t.y * this.W + t.x] >= 0;
     const out: ActionId[] = [];
     const hz = this.trueHazardAt(c.tile);
     const known = this.incidentKnown(c);
     const rt = this.routineTarget(c);
     if (rt && hz !== 'immediate' && can(rt)) out.push('continue_routine');
-    if (can(homeDoor(c)) && this.trueHazardAt(homeDoor(c)) !== 'immediate') out.push('go_home');
-    if (known && can(buildingById('shelter').door)) out.push('seek_shelter');
+    if (can(this.homeDoor(c)) && this.trueHazardAt(this.homeDoor(c)) !== 'immediate') out.push('go_home');
+    if (known && can(this.near('shelter', c).door)) out.push('seek_shelter');
     if (this.nearestNeedy(c, reach)) out.push('help_neighbor');
-    if (this.shopOpen() && hz !== 'immediate' && c.needs.supplies >= 0.55 && can(buildingById('shop').door)) out.push('seek_supplies');
+    if (this.shopOpen() && hz !== 'immediate' && c.needs.supplies >= 0.55 && can(this.near('shop', c).door)) out.push('seek_supplies');
     if (known && (c.role === 'healthcare' || c.role === 'responder')) out.push('report_for_duty');
     if (hz !== 'immediate') out.push('wait');
-    if (c.injury === 'minor' && c.care === 'none' && this.clinicStatus() !== 'closed' && can(buildingById('clinic').door)) out.push('seek_medical_care');
+    if (c.injury === 'minor' && c.care === 'none' && this.clinicStatus(c) !== 'closed' && can(this.near('clinic', c).door)) out.push('seek_medical_care');
     if (known && (hz === 'nearby' || hz === 'immediate') && this.safeSpot(reach)) out.push('move_away_from_hazard');
     if (hz !== 'immediate' && this.familyToCheck(c, reach).length) out.push('check_on_family');
     if (hz !== 'immediate' && this.tick >= c.warnCooldownUntil && this.warnTarget(c, reach)) out.push('warn_others');
@@ -833,7 +853,7 @@ export class Simulation {
 
   buildInput(c: Citizen, eligible: ActionId[]): CitizenDecisionInput {
     const reach = reachMap(this.walkable, c.tile);
-    const can = (t: Tile) => reach[t.y * MAP_W + t.x] >= 0;
+    const can = (t: Tile) => reach[t.y * this.W + t.x] >= 0;
     const ph = this.perceivedHazard(c);
     const fam = this.familyToCheck(c, reach)[0] ?? null;
     const famRec = fam ? c.family[fam.id] : null;
@@ -846,7 +866,7 @@ export class Simulation {
       citizen: {
         id: c.id,
         role: c.role,
-        locationId: c.inside ? `${c.inside}-area` : locationIdFor(c.tile),
+        locationId: c.inside ? `${c.inside}-area` : this.map.locationIdFor(c.tile),
         currentPlan: c.plan,
         traits: c.traits,
         needs: { fatigue: round2(c.needs.fatigue), supplies: round2(c.needs.supplies) },
@@ -859,10 +879,10 @@ export class Simulation {
         alertSource: this.incidentActive ? c.alert : 'none',
         nearbyPersonNeedsHelp: this.nearestNeedy(c, reach) !== null,
         unwarnedPeopleNearby: this.warnTarget(c, reach) !== null,
-        clinicStatus: this.clinicStatus(),
-        reachableClinic: can(buildingById('clinic').door),
-        reachableHome: can(homeDoor(c)),
-        reachableShelter: can(buildingById('shelter').door),
+        clinicStatus: this.clinicStatus(c),
+        reachableClinic: can(this.near('clinic', c).door),
+        reachableHome: can(this.homeDoor(c)),
+        reachableShelter: can(this.near('shelter', c).door),
         safeSpotReachable: ph.level === 'nearby' || ph.level === 'immediate' ? this.safeSpot(reach) !== null : false,
         shopAvailable: this.shopOpen(),
         isOnDuty: (c.role === 'healthcare' || c.role === 'responder') && (this.incidentKnown(c) || c.plan === 'at_work'),
@@ -882,7 +902,7 @@ export class Simulation {
 
   private requestDecision(c: Citizen) {
     if (c.inside) {
-      const door = buildingById(c.inside).door;
+      const door = this.map.building(c.inside).door;
       if (!this.walkable[door.y][door.x]) {
         // Front door under water: stay in (upstairs) until the street drains.
         c.cooldown = 30;
@@ -961,12 +981,12 @@ export class Simulation {
         break;
       }
       case 'go_home':
-        this.go(c, homeDoor(c));
+        this.go(c, this.homeDoor(c));
         c.actionLabel = 'Going home';
         c.plan = 'at_home';
         break;
       case 'seek_shelter':
-        this.go(c, buildingById('shelter').door);
+        this.go(c, this.near('shelter', c).door);
         c.actionLabel = 'Seeking shelter';
         break;
       case 'help_neighbor': {
@@ -975,13 +995,13 @@ export class Simulation {
         break;
       }
       case 'seek_supplies':
-        this.go(c, buildingById('shop').door);
+        this.go(c, this.near('shop', c).door);
         c.actionLabel = 'Getting supplies';
         break;
       case 'report_for_duty': {
         const needy = c.role === 'responder' ? this.nearestNeedy(c, reach, Infinity) : null;
         const fire = c.role === 'responder' && (this.fire.phase === 'burning' || this.fire.phase === 'suppression');
-        const post = c.role === 'healthcare' ? buildingById('clinic').door : needy?.tile ?? (fire ? FIRE_POST : buildingById('firestation').door);
+        const post = c.role === 'healthcare' ? this.workDoor(c) ?? this.near('clinic', c).door : needy?.tile ?? (fire ? FIRE_POST : this.workDoor(c) ?? this.near('firestation', c).door);
         if (needy) { c.helpingId = needy.id; related = [needy.id]; }
         this.go(c, post);
         c.actionLabel = c.role === 'healthcare' ? 'Reporting to the clinic' : needy ? `Responding to ${first(needy)}` : fire ? 'Joining the fire crew' : 'Reporting to the station';
@@ -993,7 +1013,7 @@ export class Simulation {
         c.actionLabel = via === 'safety' ? 'Staying put — no safe route' : 'Waiting it out';
         break;
       case 'seek_medical_care':
-        this.go(c, buildingById('clinic').door);
+        this.go(c, this.near('clinic', c).door);
         c.actionLabel = 'Going to the clinic for treatment';
         c.cooldown = 200;
         break;
@@ -1020,7 +1040,7 @@ export class Simulation {
           c.taskTargetId = o.id;
           related = [o.id];
           this.go(c, this.spotOf(o));
-          c.actionLabel = o.inside ? `Warning people at the ${buildingById(o.inside).label.toLowerCase()}` : `Warning ${first(o)}`;
+          c.actionLabel = o.inside ? `Warning people at the ${this.map.building(o.inside).label.toLowerCase()}` : `Warning ${first(o)}`;
           c.cooldown = 220;
         }
         break;
@@ -1113,7 +1133,7 @@ export class Simulation {
 
   private arrive(c: Citizen) {
     if (c.helpingId) return;
-    const at = BUILDINGS.find((b) => b.door.x === c.tile.x && b.door.y === c.tile.y);
+    const at = this.map.buildings.find((b) => b.door.x === c.tile.x && b.door.y === c.tile.y);
     if (c.action === 'check_on_family' && c.taskTargetId) this.searchArrived(c, at?.id ?? null);
     if (c.action === 'attend_festival' && this.festival.slots.includes(c.id) && c.festivalUntil === null) {
       c.festivalUntil = this.tick + 220 + (c.decisionSeq % 4) * 25;
@@ -1149,7 +1169,7 @@ export class Simulation {
     const m = this.citizen(c.taskTargetId!);
     const here = (buildingId && m.inside === buildingId) || (!m.inside && Math.hypot(m.pos.x - c.pos.x, m.pos.y - c.pos.y) <= 1.6);
     if (here) { this.reunite(c, m); return; }
-    const place = placeLabel(c.family[m.id].place);
+    const place = this.map.placeLabel(c.family[m.id].place);
     c.family[m.id].lastKnown = null;
     c.taskTargetId = null;
     c.cooldown = Math.min(c.cooldown, 12);
@@ -1167,9 +1187,9 @@ export class Simulation {
 
   /** Record that two housemates have just seen each other (and heard where the other is heading). */
   private touch(a: Citizen, b: Citizen) {
-    const where = (o: Citizen) => (o.path.length ? o.path[o.path.length - 1] : o.inside ? buildingById(o.inside).door : o.tile);
-    a.family[b.id] = { lastContactTick: this.tick, lastKnown: where(b), place: locationIdFor(where(b)) };
-    b.family[a.id] = { lastContactTick: this.tick, lastKnown: where(a), place: locationIdFor(where(a)) };
+    const where = (o: Citizen) => (o.path.length ? o.path[o.path.length - 1] : o.inside ? this.map.building(o.inside).door : o.tile);
+    a.family[b.id] = { lastContactTick: this.tick, lastKnown: where(b), place: this.map.locationIdFor(where(b)) };
+    b.family[a.id] = { lastContactTick: this.tick, lastKnown: where(a), place: this.map.locationIdFor(where(a)) };
   }
 
   private updateContacts() {
@@ -1190,7 +1210,7 @@ export class Simulation {
   private updateWarnings() {
     for (const c of this.citizens) {
       if (c.action !== 'warn_others' || !c.taskTargetId || c.inside || c.needsHelp) continue;
-      const door = BUILDINGS.find((b) => Math.hypot(b.door.x - c.pos.x, b.door.y - c.pos.y) < 0.6);
+      const door = this.map.buildings.find((b) => Math.hypot(b.door.x - c.pos.x, b.door.y - c.pos.y) < 0.6);
       const told = this.citizens.filter((o) => o !== c && o.alert === 'none' && ((!o.inside && Math.hypot(o.pos.x - c.pos.x, o.pos.y - c.pos.y) <= 2) || (door && o.inside === door.id)));
       if (told.length) {
         const kind = this.hazardKind() === 'flood' ? 'the flooding' : 'the fire';
@@ -1231,15 +1251,17 @@ export class Simulation {
         this.log('effect', `${first(c)} was treated at the clinic and is fine.`, c.id, { via: 'sim' });
       }
     }
-    const load = this.clinicLoad();
-    let free = load.capacity - load.treating;
-    if (free <= 0) return;
-    const queue = this.citizens.filter((c) => c.care === 'queued').sort((a, b) => a.careUntil - b.careUntil || a.id.localeCompare(b.id));
-    for (const c of queue) {
-      if (free-- <= 0) break;
-      c.care = 'treating';
-      c.careUntil = this.tick + TREAT_TICKS;
-      c.actionLabel = 'Being treated';
+    for (const clinic of this.map.ofKind('clinic')) {
+      const load = this.clinicLoad(clinic.id);
+      let free = load.capacity - load.treating;
+      if (free <= 0) continue;
+      const queue = this.citizens.filter((c) => c.care === 'queued' && c.inside === clinic.id).sort((a, b) => a.careUntil - b.careUntil || a.id.localeCompare(b.id));
+      for (const c of queue) {
+        if (free-- <= 0) break;
+        c.care = 'treating';
+        c.careUntil = this.tick + TREAT_TICKS;
+        c.actionLabel = 'Being treated';
+      }
     }
   }
 

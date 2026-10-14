@@ -1,4 +1,4 @@
-import { buildingById, BUILDINGS, type Tile } from './map';
+import type { CityMap, Tile } from './map';
 import { createRng, round2 } from './rng';
 import type { ActionId, AlertSource, DecisionResult, Injury, Needs, Plan, Role, Traits } from './types';
 
@@ -92,10 +92,10 @@ const ROLES: { role: Role; occupation: string; work: string | null }[] = [
   { role: 'resident', occupation: 'Nurse student', work: 'office' },
 ];
 
-const HOMES = BUILDINGS.filter((b) => b.kind === 'house').map((b) => b.id);
 
 /** 25 seeded citizens: same seed → same population (PRD F01). */
-export function createPopulation(seed: number): CitizenSeed[] {
+export function createPopulation(seed: number, map: CityMap): CitizenSeed[] {
+  const HOMES = map.ofKind('house').map((b) => b.id);
   const rng = createRng(seed ^ 0x51ed);
   return NAMES.map(([name, age], i) => {
     const r = ROLES[i];
@@ -155,5 +155,3 @@ export function spawnCitizen(s: CitizenSeed, start: Tile, plan: Plan, needs: Nee
   };
 }
 
-export const homeDoor = (c: CitizenSeed) => buildingById(c.homeId).door;
-export const workDoor = (c: CitizenSeed) => (c.workId ? buildingById(c.workId).door : null);
