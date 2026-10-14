@@ -12,14 +12,16 @@ export const ACTION_IDS = [
   'check_on_family',
   'warn_others',
   'attend_festival',
+  'restore_power',
+  'direct_traffic',
 ] as const;
 export type ActionId = (typeof ACTION_IDS)[number];
-export const ACTIONS_VERSION = 'jev-city-actions-v2';
+export const ACTIONS_VERSION = 'jev-city-actions-v3';
 
-export const SCENARIOS = ['ordinary_morning', 'blackout', 'meteor', 'building_fire', 'street_festival', 'flash_flood'] as const;
+export const SCENARIOS = ['ordinary_morning', 'blackout', 'meteor', 'building_fire', 'street_festival', 'flash_flood', 'meteor_blackout', 'big_city_blackout'] as const;
 export type ScenarioId = (typeof SCENARIOS)[number];
 
-export const ROLES = ['resident', 'service', 'healthcare', 'responder'] as const;
+export const ROLES = ['resident', 'service', 'healthcare', 'responder', 'utility'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const PLANS = [
@@ -46,13 +48,15 @@ export const CLINIC_STATUSES = ['open', 'busy', 'closed'] as const;
 export const FESTIVAL_PHASES = ['none', 'setup', 'open', 'closing', 'closed'] as const;
 export type FestivalPhase = (typeof FESTIVAL_PHASES)[number];
 export const CROWD_LEVELS = ['none', 'light', 'moderate', 'busy'] as const;
+export const GRID_STATUSES = ['online', 'outage'] as const;
+export const CONGESTION_TIERS = ['none', 'light', 'heavy'] as const;
 
 export type Traits = { caution: number; altruism: number; sociability: number };
 export type Needs = { fatigue: number; supplies: number };
 
-/** Strict DTO accepted by /api/decision (contract jev-city-decision-v2). */
+/** Strict DTO accepted by /api/decision (contract jev-city-decision-v3). */
 export type CitizenDecisionInput = {
-  contractVersion: 'jev-city-decision-v2';
+  contractVersion: 'jev-city-decision-v3';
   scenario: ScenarioId;
   seed: number;
   simulationMinute: number;
@@ -90,6 +94,23 @@ export type CitizenDecisionInput = {
     festival: FestivalPhase;
     festivalCrowd: (typeof CROWD_LEVELS)[number];
     festivalReachable: boolean;
+    /** Housemates currently at the festival (a real social circumstance, not an instruction). */
+    householdAtFestival: number;
+    power: {
+      /** Whether the lights are out where this citizen is. */
+      gridStatus: (typeof GRID_STATUSES)[number];
+      /** Utility staff only: an open repair work order they could take. Others are told nothing about repairs. */
+      workOrderOpen: boolean;
+      repairSiteReachable: boolean;
+      repairSiteSafe: boolean;
+      utilityCrewOnSite: number;
+    };
+    traffic: {
+      darkSignalsNearby: boolean;
+      /** Responders only: a dark, backed-up intersection nobody is directing yet. */
+      trafficControlNeeded: boolean;
+      congestionTier: (typeof CONGESTION_TIERS)[number];
+    };
   };
   eligibleActionIds: ActionId[];
 };
@@ -124,7 +145,7 @@ export type DecisionStatus = 'success' | 'replayed' | 'fallback' | 'budget_exhau
 
 export type DecisionResult = {
   id: string;
-  contractVersion: 'jev-city-decision-v2';
+  contractVersion: 'jev-city-decision-v3';
   scenario: ScenarioId;
   citizenId: string;
   simulatedAtMinute: number;

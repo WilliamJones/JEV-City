@@ -21,7 +21,7 @@ const arg = (n: string, d: string) => {
   return i > 0 ? process.argv[i + 1] : d;
 };
 const TRIALS = Number(arg('trials', '3'));
-const PER_SCENARIO = Number(arg('per-scenario', '10')); // 6 scenarios × 10 = 60 snapshots (sim v6)
+const PER_SCENARIO = Number(arg('per-scenario', '10')); // 8 scenarios × 10 = 80 snapshots (sim v7)
 const CONCURRENCY = Number(arg('concurrency', '4'));
 const LLMS = arg('llms', 'openai/gpt-4o-mini,google/gemini-2.5-flash').split(',');
 const JEV_PRICE_IN = 0.042; // USD per 1M input tokens, docs.typesafe.ai/models (2026-10-13); output free

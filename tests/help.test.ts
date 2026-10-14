@@ -26,7 +26,13 @@ describe('help system', () => {
     const tick = (name: string) => Number(world.match(new RegExp(`${name} = (\\d+)`))![1]);
     const hhmm = (start: number, t: number) => { const m = start + Math.floor(t * 0.1); return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
     expect(content).toContain(hhmm(18 * 60 + 50, tick('BLACKOUT_TICK')));
-    expect(content).toContain(hhmm(18 * 60 + 50, tick('POWER_RESTORED_TICK')));
+    expect(content).toContain(hhmm(18 * 60 + 50, tick('BLACKOUT_TICK') + tick('ISOLATION_TICKS')));
+    expect(content).toContain(hhmm(18 * 60 + 50, tick('BLACKOUT_TICK') + tick('CONTRACTOR_DELAY')));
+    expect(content).toContain(hhmm(18 * 60 + 40, tick('BLACKOUT_TICK') + tick('CONTRACTOR_DELAY')));
+    const mb = (k: string) => Number(world.match(new RegExp(`METEOR_BLACKOUT: MeteorConfig = \\{[\\s\\S]*?${k}: (\\d+)`))![1]);
+    for (const k of ['warnTick', 'impactTick', 'crewTick', 'clearTick']) expect(content).toContain(hhmm(17 * 60 + 40, mb(k)));
+    expect(content).toContain(hhmm(17 * 60 + 40, mb('impactTick') + tick('MB_ISOLATION_TICKS')));
+    expect(content).toContain(hhmm(17 * 60 + 40, mb('impactTick') + tick('CONTRACTOR_DELAY')));
     expect(content).toContain(hhmm(12 * 60 + 30, tick('METEOR_IMPACT_TICK')));
     expect(content).toContain(hhmm(12 * 60 + 30, tick('METEOR_CREW_TICK')));
     expect(content).toContain(hhmm(12 * 60 + 30, tick('METEOR_CLEARED_TICK')));

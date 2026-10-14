@@ -43,3 +43,32 @@ Expansion approved in `docs/reviews/2026-10-14-chatgpt-v6-expansion.md`: 5 new a
 Honesty notes:
 - Festival crowds are small because JEV mostly prefers carrying on with the current plan (mean P(attend) ≈ 0.11 in a trial run). We did not tune anything to change that; out-of-town visitors are labeled scenery.
 - Fire suppression speed depends on how many responders chose *report for duty* and are at the crew post — a real consequence of recorded decisions, shown in the banner.
+
+# Sim v7 acceptance (restore power · meteor + outage · direct traffic · Big City)
+
+Plan: `docs/reviews/2026-10-14-chatgpt-v7-plan.md`. Contract `jev-city-decision-v3` (14 actions), `rules-v3`, SIM_VERSION 7. Tests in `tests/v7.test.ts` run on the rules baseline with test policies that force or hide specific choices (counterfactuals); the recorded runs below are real JEV.
+
+| ID | Condition | How verified | Status |
+|---|---|---|---|
+| V7-P01/P02 | restore_power only for utility staff, open + safe + reachable order, ≤2 crew | Auto, every request in 3 scenarios | ✅ |
+| V7-P03 / C06 | Progress only while someone is physically on site; power returns only at 240/240 | Auto | ✅ |
+| V7-P04 / C07 | Two workers restore sooner than one (counterfactual, same seed) | Auto | ✅ |
+| V7-P05 | Nobody responds → backup crew drives in from out of town and does the work | Auto (repairedBy = contractor; restored after its dispatch tick) | ✅ |
+| V7-P06 | Restoration brings back building power and signals | Auto | ✅ |
+| V7-P07 / T08 / C08 / S06 | Replays reproduce repairs, traffic control and hashes | Auto: all 8 recordings replay with identical applied order and checkpoint hashes (traffic is part of the hash) | ✅ |
+| V7-T01/T02/T03 | direct_traffic only for responders; one controller per intersection (max 2); control starts on arrival | Auto | ✅ |
+| V7-T04/T05 / C05 | No vehicle overlap or closed-tile entry through manual control and back to signals | Auto (pairwise distance > 0.3 tiles every tick) | ✅ |
+| V7-T06 | Manual control vs all-way stop | **Measured** on the blackout, same seed and decisions, every dark intersection directed from tick 200 to 800: **280 vs 79 cars through intersections; mean queue 0.8 vs 1.9 cars**. Test asserts directed > all-way | ✅ |
+| V7-T07 | Arrival-time changes come from routing, not a bonus | By construction: vans are ordinary vehicles in the deterministic traffic model (signals, queues, closures, re-planning); there is no arrival bonus anywhere | ✅ |
+| V7-C01/C02 | Impact → exactly one linked outage spreading outward from the substation | Auto | ✅ |
+| V7-C03 | Citizens see the dark, not hidden causes; only utility staff told about the order | Auto | ✅ |
+| V7-C04 | Either recovery can finish first | Auto: power-first and roads-first both demonstrated | ✅ |
+| V7-S01/S02/S03 | 100 unique citizens (70/10/8/8/4), valid homes, reachable destinations, never on closed tiles | Auto | ✅ |
+| V7-S04 | p95 frame < 33 ms on Big City | Measured: steady 100 fps (headless Chromium cap) on the full 100-citizen replay with traffic | ✅ |
+| V7-S05/S08 | Search, filters, follow, inspector usable; all 100 inspectable | Manual | ✅ |
+| Mechanism | A delivered warning changes the recipient's next input | Auto counterfactual (not a decision-quality claim) | ✅ |
+
+What real JEV did in the recordings (not tuned):
+- **Blackout:** both utility workers chose *restore power* (P≈0.55–0.61); power back at 20:03, credited to Ben and Daniel. Responders were offered *direct traffic* 11 times and never chose it (max P≈0.38).
+- **Meteor + outage:** power back at 19:14, road reopened at 20:00 (power first).
+- **Big City:** all 4 utility staff chose *restore power*; both responders offered *direct traffic* chose it; power back at 20:20.

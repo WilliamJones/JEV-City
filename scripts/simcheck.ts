@@ -4,7 +4,7 @@ import { SCENARIOS } from '../src/sim/types';
 import { Simulation } from '../src/sim/world';
 
 const TICKS = Number(process.argv[2] ?? 2400);
-for (const sc of SCENARIOS) {
+for (const sc of (process.argv[3] ? process.argv[3].split(',') : SCENARIOS) as typeof SCENARIOS) {
   const t0 = Date.now();
   const sim = new Simulation(sc, 2401);
   const eligible: Record<string, number> = {}, chosen: Record<string, number> = {};
@@ -24,5 +24,7 @@ for (const sc of SCENARIOS) {
   console.log(`\n== ${sc}: ${reqs} requests, ${single} safety events, ${Date.now() - t0}ms`);
   console.log(' eligible:', JSON.stringify(eligible));
   console.log(' chosen  :', JSON.stringify(chosen));
-  console.log(effects.slice(0, 70).join('\n'));
+  console.log(effects.filter((e) => /power|Power|utility|substation|traffic|intersection|grid|crew|van/i.test(e)).slice(0, 40).join('\n'));
+  const st = Object.entries(sim.traffic.stats).map(([k, v]) => `${k}:${v.queued}`).join(' ');
+  console.log(' power:', sim.power.status, 'restoredTick', sim.power.restoredTick, 'work', sim.power.order?.workCompleted, ' queues@end', st);
 }

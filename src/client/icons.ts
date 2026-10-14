@@ -56,6 +56,16 @@ export function drawActionIcon(g: Graphics, a: ActionId, color: number) {
       g.poly([-5, -1.6, -1, -1.6, 4.5, -4.5, 4.5, 4.5, -1, 1.6, -5, 1.6]).fill(color);
       g.rect(-3, 1.6, 1.8, 2.6).fill(color);
       break;
+    case 'restore_power':
+      // lightning bolt
+      g.poly([1, -5.5, -4, 0.8, -0.6, 0.8, -1.6, 5.5, 4, -1, 0.4, -1, 1.8, -5.5]).fill(color);
+      break;
+    case 'direct_traffic':
+      // raised hand / stop paddle
+      g.circle(0, -1.5, 3.8).fill(color);
+      g.rect(-0.7, 2, 1.4, 3.6).fill(color);
+      g.rect(-2.2, -2.2, 4.4, 1.4).fill(0xffffff);
+      break;
     case 'attend_festival':
       // music note
       g.circle(-2.4, 3, 2).fill(color).circle(3, 1.8, 2).fill(color);

@@ -27,12 +27,12 @@ export const HELP: HelpSection[] = [
     summary: 'A tiny city where every citizen decision comes from an AI model called JEV.',
     body: (
       <>
-        <P>JEV City is a miniature town with <b>25 citizens</b>. Every few seconds a citizen has to decide what to do next — keep to their routine, go home, find shelter, help a neighbor, get supplies, report for duty, wait, get medical care, move away from danger, check on family, warn others, or join a festival. <b>That decision is made by JEV</b>, a decision model from TypeSafe AI that returns typed answers with probabilities instead of paragraphs of text.</P>
+        <P>JEV City is a miniature town with <b>25 citizens</b> (and a separate <b>Big City</b> with 100). Every few seconds a citizen has to decide what to do next — keep to their routine, go home, find shelter, help a neighbor, get supplies, report for duty, wait, get medical care, move away from danger, check on family, warn others, join a festival, restore power (utility staff) or direct traffic (responders). <b>That decision is made by JEV</b>, a decision model from TypeSafe AI that returns typed answers with probabilities instead of paragraphs of text.</P>
         <P>Everything else — walking, traffic, fire, floodwater, the meteor, the clinic — is ordinary simulation code. The point of the demo is to let you <b>see and inspect each AI decision</b>: what the citizen knew, which options were possible, how likely JEV thought each one was, and how long it took.</P>
-        <P><b>Decisions have consequences.</b> When someone chooses to warn others, the people they reach learn about the danger and make their own next decisions with that knowledge. Someone checking on family may find them — or discover they’ve moved on. Responders who choose to join the fire crew make the fire go out sooner. Open any citizen’s <i>Why did the world change?</i> trail to follow the chain.</P>
+        <P><b>Decisions have consequences.</b> When someone chooses to warn others, the people they reach learn about the danger and make their own next decisions with that knowledge. Someone checking on family may find them — or discover they’ve moved on. Responders who choose to join the fire crew make the fire go out sooner. Utility workers who choose to restore power drive a van through real traffic and do the repair — the lights come back only when the work is done. A responder directing a dark intersection really moves more cars through it (measured: ~3.5× more than an all-way stop in the same blackout). Open any citizen’s <i>Why did the world change?</i> trail to follow the chain.</P>
         <H>The 30-second version</H>
         <ol className="mb-2 list-decimal space-y-1 pl-5 text-sm" style={{ color: 'var(--ink-soft)' }}>
-          <li>Pick a scenario at the top: Morning, Blackout, Meteor, Fire, Festival or Flood.</li>
+          <li>Pick a scenario at the top: Morning, Blackout, Meteor, Fire, Festival, Flood, Meteor + Outage, or Big City.</li>
           <li>Watch the little bubbles that pop above people — each one is a fresh decision.</li>
           <li>Click any citizen (or a name in the side panel) to open the <b>inspector</b> and see exactly what JEV returned.</li>
         </ol>
@@ -52,7 +52,8 @@ export const HELP: HelpSection[] = [
     summary: 'Scenario, play/pause, speed, day/night, engine, camera.',
     body: (
       <>
-        <Row k="Scenario tabs">Switch between Morning, Blackout, Meteor, Fire, Festival and Flood (hover a tab for its full name). Switching restarts the city from the beginning.</Row>
+        <Row k="Scenario tabs">Switch between Morning, Blackout, Meteor, Fire, Festival, Flood, Meteor + Outage and Big City (hover a tab for its full name; swipe the row on a phone). Switching restarts the city from the beginning.</Row>
+        <Row k="Big City tools">Search and filter the 100 citizens by name, job, role or status in the side panel; jump the camera to a neighbourhood (NW · NE · ◎ · SW · SE) or <b>Fit city</b>; press <b>◎ Follow</b> in the inspector to keep the camera on one person.</Row>
         <Row k="Pause / Play">Freeze or resume time. Shortcut <K>Space</K>.</Row>
         <Row k="Reset">Restart the current scenario.</Row>
         <Row k="1× 2× 4×">Simulation speed. 1× is one simulated minute per real second.</Row>
@@ -110,7 +111,7 @@ export const HELP: HelpSection[] = [
   },
   {
     id: 'scenarios',
-    title: 'The six scenarios',
+    title: 'The scenarios',
     summary: 'What happens, and when, in each scenario.',
     body: (
       <>
@@ -122,7 +123,10 @@ export const HELP: HelpSection[] = [
           <li><b>~18:56</b> — the substation fails. Lights go out in a wave spreading from it; traffic signals go dark and intersections become all-way stops.</li>
           <li>The market and office close; the corner store stays open by lantern; the clinic switches to its generator (pulsing red glow).</li>
           <li>Three older residents get stuck in the dark (red <b>!</b>). Neighbors, nurses and responders decide whether to help. Later someone trips in the dark. Everyone may also go looking for housemates they haven’t seen since the lights went out.</li>
-          <li><b>~21:40</b> — power is restored, spreading back out from the substation.</li>
+          <li><b>19:02</b> — the substation is isolated and safe to work on. Its two utility staff can now choose <b>Restore power</b>: each walks to a van, drives through the dark (and possibly jammed) streets, and works on site. One worker takes 240 work-ticks; two halve that.</li>
+          <li>Responders may choose <b>Direct traffic</b> at a backed-up dark intersection, turning an all-way stop back into a flowing junction.</li>
+          <li><b>20:26</b> — if the repair still isn’t finished, a backup utility crew is dispatched from out of town and must drive in too.</li>
+          <li>The lights come back — spreading out from the substation — <b>only when the repair is done</b>. The banner and event feed credit whoever actually did it.</li>
         </ul>
         <H>☄︎ Meteor Near the Market (starts 12:30)</H>
         <ul className="list-disc space-y-1 pl-5 text-sm" style={{ color: 'var(--ink-soft)' }}>
@@ -130,6 +134,19 @@ export const HELP: HelpSection[] = [
           <li><b>12:39</b> — impact. A crater opens beside the market; the coral dashed ring and cones mark a closed zone no one can enter. Three people nearby are hurt and stranded; two more get minor cuts from flying debris and may choose to visit the clinic.</li>
           <li><b>~13:40</b> — an excavator and cleanup crew arrive and the crater gradually fills in.</li>
           <li><b>~15:00</b> — roads reopen, the crater is paved over, stalls are rebuilt and life returns to normal.</li>
+        </ul>
+        <H>☄︎⚡︎ Meteor Strike + Power Failure (starts 17:40)</H>
+        <ul className="mb-2 list-disc space-y-1 pl-5 text-sm" style={{ color: 'var(--ink-soft)' }}>
+          <li><b>17:58</b> — meteor warning over the utility corridor.</li>
+          <li><b>18:10</b> — impact beside the substation: a crater closes nearby roads, three people are hurt and stranded — and the damaged feeder knocks the power out, spreading outward block by block. Citizens see the dark; they aren’t told why.</li>
+          <li><b>18:22</b> — the site is safe for utility repairs. <b>18:50</b> — a road crew arrives at the crater.</li>
+          <li><b>19:40</b> — backup utility crew dispatched if repairs aren’t done. <b>20:00</b> — the crater is cleared and the road reopens.</li>
+          <li>Two independent recoveries: power can come back before the road reopens, or the other way round — the banner tells you which.</li>
+        </ul>
+        <H>▦ Big City Blackout (starts 18:40)</H>
+        <ul className="mb-2 list-disc space-y-1 pl-5 text-sm" style={{ color: 'var(--ink-soft)' }}>
+          <li>A separate 44×44 city with <b>100 citizens</b> (70 residents, 10 service, 8 healthcare, 8 responders, 4 utility), two clinics, two shelters, two fire stations, apartments and a park.</li>
+          <li><b>18:46</b> — the grid fails. Same rules as the blackout: utility staff can restore power, responders can direct traffic, six older residents get stuck in the dark, and a backup crew is dispatched at <b>20:16</b> if needed.</li>
         </ul>
         <H>♨︎ Office Fire (starts 15:10)</H>
         <ul className="mb-2 list-disc space-y-1 pl-5 text-sm" style={{ color: 'var(--ink-soft)' }}>
@@ -194,7 +211,7 @@ export const HELP: HelpSection[] = [
         <Row k="Teal roof, shield">Community shelter.</Row>
         <Row k="Striped awning">Market hall (coral) and corner store (yellow).</Row>
         <Row k="Red, garage doors">Fire &amp; rescue station — responders’ base.</Row>
-        <Row k="Lightning bolt">Power substation — where the blackout starts.</Row>
+        <Row k="Lightning bolt">Power substation — where the blackout starts. During an outage it gets an orange-and-white fenced repair area with a progress bar.</Row>
         <Row k="Tall glass tower">Office — many commuters work here.</Row>
         <H>People</H>
         <Row k="White outfit, teal cross">Healthcare worker (nurse, doctor).</Row>
@@ -204,6 +221,10 @@ export const HELP: HelpSection[] = [
         <Row k="Purple stage, instruments">Festival performers (scenery, not citizens).</Row>
         <Row k="Grey-toned figures">Out-of-town festival visitors — background scenery so the plaza isn’t empty. They aren’t citizens, can’t be clicked and never appear in any count.</Row>
         <Row k="Red truck, flashing lights">The fire engine — driven by the simulation on a fixed route, not by JEV.</Row>
+        <Row k="Yellow vest, blue hard hat">Utility worker (a citizen who can choose to restore power).</Row>
+        <Row k="Yellow van, amber beacons">A utility worker driving to the substation (they’re inside).</Row>
+        <Row k="Orange truck, ladder">The backup utility crew (scenery, dispatched by the simulation).</Row>
+        <Row k="Responder waving a glowing wand">Directing traffic at a dark intersection — that junction’s signal heads stay dark while they work.</Row>
         <H>Traffic</H>
         <P>Cars, traffic lights and the fountain are <b>scenery</b> — they make the city feel alive but are not controlled by JEV and never affect decisions. Signals cycle green → yellow → red; during the blackout they go dark and cars treat intersections as all-way stops.</P>
       </>
@@ -254,6 +275,8 @@ export const HELP: HelpSection[] = [
         <Row k="I see a FALLBACK label">JEV didn’t provide that decision; the inspector shows why. If it happens in replay mode, reload the page — you may be running an older version.</Row>
         <Row k="Why didn’t everyone react to the fire at once?">Fires and floods are local. A citizen only knows about one if they saw it, got the official alert, or a neighbor chose to warn them. JEV is only ever told what that citizen could actually know.</Row>
         <Row k="Someone went to check on family but nobody was there">They only knew where their housemate <i>said</i> they’d be. If that person moved on, the search fails — the simulation never gives anyone magical knowledge.</Row>
+        <Row k="Why didn’t the power come back at a fixed time?">There is no timer. The lights return only when the repair work at the substation is finished — by utility staff who chose to go, or by the backup crew.</Row>
+        <Row k="Why did the van take so long?">It drives through the same deterministic traffic as everyone else — dark signals become all-way stops and queues build. A responder directing a junction on its route can speed it up.</Row>
         <Row k="Why does the fire go out at different times?">How fast it’s put out depends on how many responders <i>chose</i> to report for duty and are standing at the crew post — a real consequence of their decisions.</Row>
         <Row k="People walk through cars!">Traffic is scenery; cars stop for people in front of them, but pedestrians aren’t simulated as traffic participants.</Row>
         <Row k="The page feels slow on my phone">Try 1× speed and Day lighting; the city is fully playable in portrait — scroll down for the panels.</Row>
@@ -279,6 +302,9 @@ export const HELP: HelpSection[] = [
         <Row k="Safety rule">Deterministic code that moves people out of closed or immediately dangerous spots, or acts when only one safe option exists. Always labeled.</Row>
         <Row k="Alert source">How a citizen knows about the emergency: saw it, official alert, or warned by a named neighbor.</Row>
         <Row k="Household">People who share a home. Each knows where the others last said they’d be.</Row>
+        <Row k="Work order">The repair job the outage creates: 240 units of work at the substation, done by whoever is physically on site.</Row>
+        <Row k="Backup crew">A scheduled, labeled fallback so power always returns eventually — but only by driving there and doing the work.</Row>
+        <Row k="All-way stop">What cars do at a dark signal: stop, then go one at a time. A responder directing traffic replaces it with hand signals.</Row>
         <Row k="Clinic beds">Two beds, plus one for each nurse or doctor who chose to report for duty and is inside.</Row>
       </>
     ),

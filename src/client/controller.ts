@@ -1,7 +1,7 @@
 'use client';
 import { asReplayed, rulesDecision } from '@/sim/decisions';
 import type { DecisionResult, JevAnswers, ScenarioId } from '@/sim/types';
-import { SIM_VERSION, Simulation, TICK_MS, type DecisionRequest } from '@/sim/world';
+import { SCENARIO_META, SIM_VERSION, Simulation, TICK_MS, type DecisionRequest } from '@/sim/world';
 
 export type Mode = 'replay' | 'live' | 'rules' | 'fallback';
 
@@ -57,6 +57,8 @@ export class Controller {
   paused = false;
   night = false;
   selectedId: string | null = null;
+  /** Camera keeps this citizen centred (Big City: following one person among 100). */
+  followId: string | null = null;
   replay: ReplayLog | null = null;
   /** True while a recording is being fetched; the sim does not advance (no silent fallbacks). */
   loading = false;
@@ -113,8 +115,9 @@ export class Controller {
     this.mode = mode;
     this.fallbackReason = null;
     this.sim = new Simulation(scenario, DEFAULT_SEED);
-    this.night = this.sim.scenario === 'blackout';
+    this.night = SCENARIO_META[scenario].night;
     this.selectedId = null;
+    this.followId = null;
     if (mode === 'replay') {
       this.loading = true;
       this.notify(true);
@@ -184,7 +187,7 @@ export class Controller {
       if (typeof body.remainingToday === 'number') this.remainingToday = body.remainingToday;
       this.sim.provide(req.key, {
         id: req.key,
-        contractVersion: 'jev-city-decision-v2',
+        contractVersion: 'jev-city-decision-v3',
         scenario: req.input.scenario,
         citizenId: req.citizenId,
         simulatedAtMinute: req.input.simulationMinute,
@@ -264,6 +267,11 @@ export class Controller {
 
   get currentBeat() {
     return this.tour.active && this.tour.index > 0 ? this.tour.beats[this.tour.index - 1] : null;
+  }
+
+  /** 0..1 progress through the current simulation tick (renderer interpolation). */
+  get alpha() {
+    return this.paused || this.loading || this.sim.stalled ? 1 : Math.max(0, Math.min(1, this.acc / TICK_MS));
   }
 
   get selected() {

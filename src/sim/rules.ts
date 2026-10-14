@@ -1,7 +1,7 @@
 import { createRng } from './rng';
 import type { ActionId, CitizenDecisionInput } from './types';
 
-export const RULES_VERSION = 'rules-v2';
+export const RULES_VERSION = 'rules-v3';
 
 /**
  * Hand-written rules baseline. Produces a normalized weight per eligible action from the same DTO JEV sees
@@ -26,7 +26,9 @@ export function ruleWeights(input: CitizenDecisionInput, seq: number): Record<st
     move_away_from_hazard: 0.2 + danger * 1.3 * (0.5 + traits.caution),
     check_on_family: famWorry * (0.6 + traits.altruism) * (1 - danger * 0.5),
     warn_others: l.unwarnedPeopleNearby ? 0.2 + traits.altruism * 0.9 + traits.sociability * 0.5 : 0,
-    attend_festival: l.festival === 'open' ? 0.2 + traits.sociability * 1.4 - needs.fatigue * 0.6 : 0,
+    attend_festival: l.festival === 'open' ? 0.2 + traits.sociability * 1.4 - needs.fatigue * 0.6 + l.householdAtFestival * 0.3 : 0,
+    restore_power: l.power.workOrderOpen && l.power.repairSiteSafe ? 1.5 + (l.power.utilityCrewOnSite === 0 ? 0.3 : 0) - danger * 0.6 : 0,
+    direct_traffic: l.traffic.trafficControlNeeded ? 0.9 + (l.traffic.congestionTier === 'heavy' ? 0.5 : 0) + traits.altruism * 0.3 : 0,
   };
   const out: Record<string, number> = {};
   let total = 0;

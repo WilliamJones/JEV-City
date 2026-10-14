@@ -1,6 +1,8 @@
+import { BIG_CITY_MAP, createBigPopulation } from './bigcity';
 import { createPopulation, spawnCitizen, type Citizen } from './citizens';
 import { elevation, findPath, MAP_H, MAP_W, reachMap, STANDARD_MAP, type BuildingKind, type CityMap, type Tile } from './map';
 import { createRng, round2, type Rng } from './rng';
+import { TrafficSim, type Car } from './traffic';
 import type {
   ActionId,
   CitizenDecisionInput,
@@ -14,7 +16,7 @@ import type {
 } from './types';
 
 /** Bump whenever simulation behavior changes; recordings must be re-captured to match. */
-export const SIM_VERSION = 6;
+export const SIM_VERSION = 7;
 export const TICK_MS = 100;
 export const MINUTES_PER_TICK = 0.1;
 /** Fixed logical "think time": a decision requested at tick t is applied at t + THINK_TICKS. */
@@ -50,11 +52,42 @@ export const SCENARIO_META: Record<ScenarioId, { title: string; short: string; s
   building_fire: { title: 'Office Fire', short: 'Fire', startMinute: 15 * 60 + 10, night: false, blurb: 'Smoke rises from the office tower.' },
   street_festival: { title: 'Street Festival', short: 'Festival', startMinute: 17 * 60, night: false, blurb: 'Saturday evening: music and stalls fill the market plaza.' },
   flash_flood: { title: 'Flash Flood', short: 'Flood', startMinute: 16 * 60, night: false, blurb: 'A cloudburst floods the low streets.' },
+  meteor_blackout: { title: 'Meteor Strike + Power Failure', short: 'Meteor + Outage', startMinute: 17 * 60 + 40, night: false, blurb: 'A meteor hits the utility corridor and knocks out the power.' },
+  big_city_blackout: { title: 'Big City Blackout', short: 'Big City', startMinute: 18 * 60 + 40, night: true, blurb: '100 citizens across a larger city lose power at dusk.' },
 };
 
 export const BLACKOUT_TICK = 60;
-export const POWER_RESTORED_TICK = 1700;
 export const BLACKOUT_TRIP_TICK = 260;
+
+/**
+ * Power grid (sim v7): an outage opens a utility work order. The lights only come back when 240 units of repair
+ * work are done on site — 1 unit/tick per utility worker who chose restore_power and arrived (max 2), plus a backup
+ * contractor that is dispatched 900 ticks after the outage and must physically drive there. No fixed restore time.
+ */
+export const ISOLATION_TICKS = 60;
+export const REPAIR_WORK = 240;
+export const CONTRACTOR_DELAY = 900;
+export const MAX_UTILITY_CREW = 2;
+export const MAX_TRAFFIC_CONTROLLERS = 2;
+export type PowerStatus = 'online' | 'outage' | 'isolated' | 'repairing' | 'restored';
+export type WorkOrder = {
+  id: string;
+  site: Tile;
+  createdTick: number;
+  isolatedTick: number;
+  workRequired: number;
+  workCompleted: number;
+  assigned: string[];
+  contractorDueTick: number;
+  contractor: { stage: 'waiting' | 'driving' | 'walking' | 'working' | 'blocked' | 'done'; vanId: number | null; onSiteTick: number | null };
+  /** Who actually did work (citizen ids, plus 'contractor'). */
+  repairedBy: string[];
+};
+
+/** Meteor timelines: the classic market strike, and the cascading strike on the utility corridor. */
+export type MeteorConfig = { center: Tile; radius: number; warnTick: number; impactTick: number; crewTick: number; clearTick: number; cutsPower: boolean };
+export const METEOR_BLACKOUT: MeteorConfig = { center: { x: 11, y: 18 }, radius: 2.0, warnTick: 180, impactTick: 300, crewTick: 700, clearTick: 1400, cutsPower: true };
+const MB_ISOLATION_TICKS = 120;
 export const METEOR_WARN_TICK = 50;
 export const METEOR_IMPACT_TICK = 90;
 export const METEOR_CENTER = { x: 9, y: 11 };
@@ -62,6 +95,7 @@ export const METEOR_CENTER = { x: 9, y: 11 };
 export const METEOR_CREW_TICK = 700;
 export const METEOR_CLEARED_TICK = 1500;
 const METEOR_RADIUS = 2.3;
+export const METEOR_MARKET: MeteorConfig = { center: METEOR_CENTER, radius: METEOR_RADIUS, warnTick: METEOR_WARN_TICK, impactTick: METEOR_IMPACT_TICK, crewTick: METEOR_CREW_TICK, clearTick: METEOR_CLEARED_TICK, cutsPower: false };
 
 /** Office fire: smoke → flames + cordon → engine dispatched → suppression (faster with responders on site) → cooling → reopen. */
 export const FIRE_SMOKE_TICK = 60;
@@ -131,6 +165,10 @@ export class Simulation {
   flood!: { phase: FloodPhase; rain: number; level: number; depth: Float32Array; wetDist: Float32Array; version: number };
   readonly map: CityMap;
   festival = { phase: 'none' as FestivalPhase, slots: Array<string | null>(FEST_CAPACITY).fill(null) };
+  /** Meteor timeline for this scenario (null when there is no meteor). */
+  readonly meteorCfg: MeteorConfig | null;
+  power: { status: PowerStatus; outageTick: number | null; restoredTick: number | null; order: WorkOrder | null } = { status: 'online', outageTick: null, restoredTick: null, order: null };
+  traffic!: TrafficSim;
   walkable: boolean[][];
   /** Tiles cars may use (walkable minus the festival road closure, any water and the parked engine). */
   drivable: boolean[][];
@@ -147,12 +185,13 @@ export class Simulation {
   constructor(scenario: ScenarioId, seed: number) {
     this.scenario = scenario;
     this.seed = seed;
-    this.map = STANDARD_MAP;
+    this.map = scenario === 'big_city_blackout' ? BIG_CITY_MAP : STANDARD_MAP;
+    this.meteorCfg = scenario === 'meteor' ? METEOR_MARKET : scenario === 'meteor_blackout' ? METEOR_BLACKOUT : null;
     this.flood = { phase: 'none', rain: 0, level: -1, depth: new Float32Array(this.W * this.H), wetDist: new Float32Array(this.W * this.H).fill(99), version: 0 };
     this.rng = createRng(seed);
     this.walkable = this.map.baseWalkable();
     this.drivable = this.walkable.map((r) => [...r]);
-    const pop = createPopulation(seed, this.map);
+    const pop = scenario === 'big_city_blackout' ? createBigPopulation(seed, this.map) : createPopulation(seed, this.map);
     this.citizens = pop.map((s, i) => {
       const start = this.startTile(s.homeId, i);
       let plan: Plan = s.workId ? (s.role === 'healthcare' ? 'travel_to_clinic' : s.role === 'responder' ? 'patrol' : 'commute_to_work') : 'stroll';
@@ -169,10 +208,11 @@ export class Simulation {
     // Households: people who share a home. Each starts out believing housemates are where they planned to be.
     for (const c of this.citizens)
       for (const m of this.citizens)
-        if (m !== c && m.homeId === c.homeId) {
+        if (m !== c && m.householdId === c.householdId) {
           const where = this.routineTarget(m) ?? this.homeDoor(m);
           c.family[m.id] = { lastContactTick: 0, lastKnown: where, place: this.map.locationIdFor(where) };
         }
+    this.traffic = new TrafficSim(this.map, seed, this.map.w > 30 ? 46 : 22);
     if (scenario === 'street_festival') { this.festival.phase = 'setup'; this.updateClosures(); }
     this.log('incident', `${SCENARIO_META[scenario].title} begins.`);
   }
@@ -192,7 +232,7 @@ export class Simulation {
   }
   /** Housemates not seen since this tick count as "unaccounted for". */
   private get incidentStartTick() {
-    return { blackout: BLACKOUT_TICK, meteor: METEOR_IMPACT_TICK, building_fire: FIRE_IGNITE_TICK, flash_flood: FLOOD_RISE_TICK, ordinary_morning: Infinity, street_festival: Infinity }[this.scenario];
+    return { blackout: BLACKOUT_TICK, meteor: METEOR_IMPACT_TICK, building_fire: FIRE_IGNITE_TICK, flash_flood: FLOOD_RISE_TICK, ordinary_morning: Infinity, street_festival: Infinity, meteor_blackout: METEOR_BLACKOUT.impactTick, big_city_blackout: BLACKOUT_TICK }[this.scenario];
   }
 
   citizen(id: string) {
@@ -234,7 +274,8 @@ export class Simulation {
 
   private log(kind: SimEvent['kind'], text: string, citizenId?: string, extra: Pick<SimEvent, 'relatedIds' | 'via'> = {}) {
     this.events.push({ tick: this.tick, minute: this.minute, kind, text, citizenId, ...extra });
-    if (this.events.length > 1500) this.events.splice(0, this.events.length - 1500);
+    const cap = this.citizens?.length > 50 ? 6000 : 1500;
+    if (this.events.length > cap) this.events.splice(0, this.events.length - cap);
   }
 
   /**
@@ -261,6 +302,10 @@ export class Simulation {
       for (const [id, fam] of Object.entries(c.family)) mixIn(`${id}=${fam.lastContactTick}@${fam.lastKnown ? `${fam.lastKnown.x},${fam.lastKnown.y}` : '-'};`);
       mixIn('|');
     }
+    for (const c of this.citizens) mixIn(`${c.id}~${c.utility ? `${c.utility.stage}${c.utility.vanId}` : '-'}~${c.trafficJob ? `${c.trafficJob.intersectionId}${c.trafficJob.stage}` : '-'}~${c.inVehicle}|`);
+    const o = this.power.order;
+    mixIn(`P${this.power.status}:${this.power.restoredTick}:${o ? `${o.workCompleted}:${o.assigned.join('+')}:${o.contractor.stage}` : '-'}|`);
+    mixIn(this.traffic.fingerprint());
     for (const row of this.walkable) mixIn(row.map((w) => (w ? 1 : 0)).join(''));
     return (h >>> 0).toString(16).padStart(8, '0');
   }
@@ -288,6 +333,8 @@ export class Simulation {
     this.updateContacts();
     this.updateWarnings();
     this.updateClinic();
+    this.updatePower();
+    this.stepTraffic();
     if (this.tick % 5 === 0) this.updateObservation();
     this.tick++;
     return true;
@@ -297,58 +344,57 @@ export class Simulation {
 
   private applyScenarioEvents() {
     const t = this.tick;
-    if (this.scenario === 'blackout') {
+    if (this.scenario === 'blackout' || this.scenario === 'big_city_blackout') {
       if (t === BLACKOUT_TICK) {
-        this.blackout = true;
-        this.log('incident', 'Substation failure — the district goes dark.');
+        this.startOutage('Substation failure — the district goes dark.', ISOLATION_TICKS);
         this.log('effect', 'Market hall and office tower close. Corner store stays open by lantern. Clinic switches to generator.', undefined, { via: 'sim' });
         for (const c of this.citizens) this.alertCitizen(c, 'observed', null, false);
-        this.strand(['citizen-06', 'citizen-11', 'citizen-22'], 'needs help in the dark', 'none');
+        const stuck = this.scenario === 'big_city_blackout'
+          ? this.outdoorCandidates().filter((c) => c.role === 'resident').sort((x, y) => y.age - x.age || x.id.localeCompare(y.id)).slice(0, 6).map((c) => c.id)
+          : ['citizen-06', 'citizen-11', 'citizen-22'];
+        this.strand(stuck, 'needs help in the dark', 'none');
         this.interruptAll();
       }
-      if (t === BLACKOUT_TRIP_TICK) this.injureFirst(this.outdoorCandidates().sort((a, b) => b.age - a.age || a.id.localeCompare(b.id)), 1, 'tripped in the dark');
-      if (t === POWER_RESTORED_TICK) {
-        this.blackout = false;
-        this.log('incident', 'Power restored across the district.');
-        this.interruptAll();
-      }
+      if (t === BLACKOUT_TRIP_TICK) this.injureFirst(this.outdoorCandidates().sort((a, b) => b.age - a.age || a.id.localeCompare(b.id)), this.citizens.length > 50 ? 3 : 1, 'tripped in the dark');
     }
-    if (this.scenario === 'meteor') this.meteorEvents(t);
+    if (this.meteorCfg) this.meteorEvents(t, this.meteorCfg);
     if (this.scenario === 'building_fire') this.fireEvents(t);
     if (this.scenario === 'flash_flood') this.floodEvents(t);
     if (this.scenario === 'street_festival') this.festivalEvents(t);
   }
 
-  private meteorEvents(t: number) {
-    if (t === METEOR_WARN_TICK) {
+  private meteorEvents(t: number, m: MeteorConfig) {
+    const where = m.cutsPower ? 'the utility corridor by the substation' : 'the market';
+    if (t === m.warnTick) {
       this.meteorIncoming = true;
-      this.log('incident', 'A bright streak crosses the sky above the market…');
+      this.log('incident', m.cutsPower ? 'Meteor warning — something bright is falling toward the utility corridor…' : 'A bright streak crosses the sky above the market…');
     }
-    if (t === METEOR_IMPACT_TICK) {
+    if (t === m.impactTick) {
       this.meteorIncoming = false;
-      this.hazard = { center: METEOR_CENTER, radius: METEOR_RADIUS, impactTick: t };
-      this.log('incident', 'Impact! A meteor fragment strikes beside the market hall.');
-      this.log('effect', 'Roads around the market are closed. Dust drifts east.', undefined, { via: 'sim' });
+      this.hazard = { center: m.center, radius: m.radius, impactTick: t };
+      this.log('incident', `Impact! A meteor fragment strikes ${where}.`);
+      this.log('effect', 'Nearby roads are closed. Dust drifts east.', undefined, { via: 'sim' });
       const byDist = [...this.citizens]
         .filter((c) => !c.inside)
-        .sort((a, b) => this.distTo(a.tile, METEOR_CENTER) - this.distTo(b.tile, METEOR_CENTER) || a.id.localeCompare(b.id));
+        .sort((a, b) => this.distTo(a.tile, m.center) - this.distTo(b.tile, m.center) || a.id.localeCompare(b.id));
       this.updateClosures();
       for (const c of this.citizens) this.alertCitizen(c, 'observed', null, false);
       this.strand(byDist.slice(0, 3).map((c) => c.id), 'is hurt and stranded near the crater', 'major');
       this.injureFirst(byDist.slice(3), 2, 'was hit by flying debris');
+      if (m.cutsPower) this.startOutage('The impact damaged the substation feeder — power is failing across the district.', MB_ISOLATION_TICKS);
       this.interruptAll();
     }
-    if (t === METEOR_CREW_TICK) {
+    if (t === m.crewTick) {
       this.crewOnSite = true;
-      this.log('effect', 'Cleanup crews and an excavator arrive at the crater.', undefined, { via: 'sim' });
+      this.log('effect', 'Road crews and an excavator arrive at the crater.', undefined, { via: 'sim' });
     }
-    if (t === METEOR_CLEARED_TICK && this.hazard) {
+    if (t === m.clearTick && this.hazard) {
       this.crewOnSite = false;
       this.hazard = null;
       this.clearedTick = t;
       this.updateClosures();
       this.crewRescue('Crews help');
-      this.log('incident', 'Debris cleared — roads around the market reopen.');
+      this.log('incident', this.blackout ? 'Debris cleared — the road has reopened, but some neighbourhoods are still without power.' : 'Debris cleared — roads around the impact reopen.');
       this.interruptAll();
     }
   }
@@ -719,6 +765,256 @@ export class Simulation {
     return { level: this.trueHazardAt(c.inside ? this.map.building(c.inside).door : c.tile), kind };
   }
 
+  // ------------------------------------------------------------------ power grid & utility work (sim v7)
+
+  get substation() {
+    return this.map.ofKind('substation')[0];
+  }
+  /** Where the outage wave starts: the substation's centre. */
+  get gridSource() {
+    const b = this.substation;
+    return { x: b.x + b.w / 2 - 0.5, y: b.y + b.h / 2 - 0.5 };
+  }
+
+  /** 0 or 1: is this point powered? The outage spreads outward from the substation; restoration spreads back. */
+  powerAt(x: number, y: number) {
+    const p = this.power;
+    if (p.outageTick === null) return 1;
+    const d = Math.hypot(x - this.gridSource.x, y - this.gridSource.y);
+    if (p.restoredTick !== null) return (this.tick - p.restoredTick) * 0.35 >= d ? 1 : 0;
+    return (this.tick - p.outageTick) * 0.28 >= d ? 0 : 1;
+  }
+
+  private startOutage(text: string, isolationTicks: number) {
+    const t = this.tick;
+    this.blackout = true;
+    this.power.status = 'outage';
+    this.power.outageTick = t;
+    this.power.restoredTick = null;
+    this.power.order = {
+      id: `wo-${t}`, site: this.substation.door, createdTick: t, isolatedTick: t + isolationTicks, workRequired: REPAIR_WORK, workCompleted: 0,
+      assigned: [], contractorDueTick: t + CONTRACTOR_DELAY, contractor: { stage: 'waiting', vanId: null, onSiteTick: null }, repairedBy: [],
+    };
+    this.log('incident', text);
+  }
+
+  /** The repair site is open for work: isolated, and not in immediate danger. */
+  get repairSiteSafe() {
+    const o = this.power.order;
+    return !!o && this.tick >= o.isolatedTick && this.trueHazardAt(o.site) !== 'immediate';
+  }
+
+  private workersOnSite() {
+    return this.citizens.filter((c) => c.utility?.stage === 'working');
+  }
+
+  private van(id: number | null): Car | undefined {
+    return id === null ? undefined : this.traffic.cars.find((c) => c.id === id);
+  }
+
+  /** Entry point for the backup crew: the map-edge road tile closest to the repair site. */
+  private contractorEntrance(park: Tile): Tile | null {
+    let best: Tile | null = null, bestD = Infinity;
+    const site = this.substation.door;
+    for (const r of this.map.roads)
+      for (const t of [{ x: 0, y: r }, { x: this.W - 1, y: r }, { x: r, y: 0 }, { x: r, y: this.H - 1 }]) {
+        if (!this.drivable[t.y][t.x] || Math.hypot(t.x - park.x, t.y - park.y) < 6) continue; // the crew comes from out of town
+        const d = Math.hypot(t.x - site.x, t.y - site.y);
+        if (d < bestD) { bestD = d; best = t; }
+      }
+    return best;
+  }
+
+  private updatePower() {
+    const p = this.power, o = p.order;
+    if (!o || p.status === 'restored') return;
+    const t = this.tick;
+    if (p.status === 'outage' && this.repairSiteSafe) {
+      p.status = 'isolated';
+      this.log('effect', 'The grid is isolated — the substation is safe to work on. Utility repairs are needed.', undefined, { via: 'sim' });
+      for (const c of this.citizens) if (c.role === 'utility' && !c.pending && !c.needsHelp && c.care === 'none') c.cooldown = Math.min(c.cooldown, 6);
+    }
+    // Backup contractor: dispatched on schedule, drives there through real traffic, then walks in.
+    const k = o.contractor;
+    if ((k.stage === 'waiting' && t >= o.contractorDueTick) || (k.stage === 'blocked' && t % 50 === 0)) {
+      const park = this.traffic.nearestRoadTile(o.site, this.drivable);
+      const entry = park ? this.contractorEntrance(park) : null;
+      const van = entry && park ? this.traffic.spawnVan('contractor', entry, park, this.drivable) : null;
+      if (van) {
+        k.stage = 'driving';
+        k.vanId = van.id;
+        this.log('effect', 'Repairs are not finished — a backup utility crew has been dispatched.', undefined, { via: 'sim' });
+      } else if (k.stage === 'waiting') {
+        k.stage = 'blocked';
+        this.log('effect', 'The backup utility crew cannot reach the substation yet — their route is blocked.', undefined, { via: 'sim' });
+      }
+    }
+    if (k.stage === 'driving' && this.van(k.vanId)?.parked) { k.stage = 'walking'; k.onSiteTick = t + 25; }
+    if (k.stage === 'walking' && k.onSiteTick !== null && t >= k.onSiteTick) {
+      k.stage = 'working';
+      this.log('effect', 'The backup utility crew has arrived and is helping with repairs.', undefined, { via: 'sim' });
+    }
+    // Repair progress: only people (and the contractor) physically on site, only once it is safe.
+    if (!this.repairSiteSafe) return;
+    const crew = this.workersOnSite().slice(0, MAX_UTILITY_CREW);
+    const rate = crew.length + (k.stage === 'working' ? 1 : 0);
+    if (!rate) return;
+    p.status = 'repairing';
+    o.workCompleted = Math.min(o.workRequired, o.workCompleted + rate);
+    for (const c of crew) if (!o.repairedBy.includes(c.id)) o.repairedBy.push(c.id);
+    if (k.stage === 'working' && !o.repairedBy.includes('contractor')) o.repairedBy.push('contractor');
+    if (o.workCompleted >= o.workRequired) this.restorePower();
+  }
+
+  private restorePower() {
+    const p = this.power, o = p.order!;
+    p.status = 'restored';
+    p.restoredTick = this.tick;
+    this.blackout = false;
+    const names = o.repairedBy.filter((id) => id !== 'contractor').map((id) => this.citizen(id));
+    const who = [...names.map(first), ...(o.repairedBy.includes('contractor') ? ['the backup crew'] : [])];
+    const credit = who.length <= 1 ? who[0] ?? 'the utility crew' : `${who.slice(0, -1).join(', ')} and ${who[who.length - 1]}`;
+    this.log('incident', `Power restored — repaired by ${credit}. Lights and signals are coming back.`, undefined, { relatedIds: names.map((c) => c.id) });
+    for (const c of this.citizens) {
+      if (c.utility) {
+        const van = this.van(c.utility.vanId);
+        if (c.inVehicle !== null && van) { c.inVehicle = null; this.placeAt(c, van.parked ?? this.traffic.world(van)); }
+        c.utility = null;
+        c.action = null;
+        c.actionLabel = 'Power restored';
+        c.path = [];
+        c.cooldown = 6;
+      }
+    }
+    for (const car of [...this.traffic.cars]) if (car.kind !== 'car') this.traffic.remove(car);
+    o.contractor.stage = 'done';
+    this.interruptAll();
+  }
+
+  /** Put a citizen on the nearest walkable tile to a point. */
+  private placeAt(c: Citizen, at: { x: number; y: number }) {
+    let best = c.tile, bestD = Infinity;
+    for (let y = Math.max(0, Math.floor(at.y) - 2); y <= Math.min(this.H - 1, Math.ceil(at.y) + 2); y++)
+      for (let x = Math.max(0, Math.floor(at.x) - 2); x <= Math.min(this.W - 1, Math.ceil(at.x) + 2); x++) {
+        if (!this.walkable[y][x]) continue;
+        const d = Math.hypot(x - at.x, y - at.y);
+        if (d < bestD) { bestD = d; best = { x, y }; }
+      }
+    c.tile = { ...best };
+    c.pos = { ...best };
+  }
+
+  /** restore_power job: walk to a road, drive the service van to the substation, walk to the site, work. */
+  private updateUtilityJob(c: Citizen) {
+    const job = c.utility!, o = this.power.order;
+    if (!o || this.power.status === 'restored') { c.utility = null; return; }
+    if (job.stage === 'to_van' && !c.path.length) {
+      const park = this.traffic.nearestRoadTile(o.site, this.drivable);
+      const van = park ? this.traffic.spawnVan('utility', c.tile, park, this.drivable) : null;
+      if (van) {
+        job.stage = 'driving';
+        job.vanId = van.id;
+        c.inVehicle = van.id;
+        c.actionLabel = 'Driving the utility van to the substation';
+        this.log('effect', `${first(c)} is driving the utility van to the substation.`, c.id, { via: 'sim' });
+      } else {
+        job.stage = 'to_site';
+        this.go(c, o.site);
+        c.actionLabel = 'Walking to the substation';
+      }
+    }
+    if (job.stage === 'driving') {
+      const van = this.van(job.vanId);
+      if (!van) { job.stage = 'to_site'; c.inVehicle = null; this.go(c, o.site); return; }
+      const w = van.parked ?? this.traffic.world(van);
+      c.pos = { x: w.x, y: w.y };
+      if (van.parked) {
+        c.inVehicle = null;
+        this.placeAt(c, van.parked);
+        job.stage = 'to_site';
+        this.go(c, o.site);
+        c.actionLabel = 'Walking to the repair site';
+      }
+    }
+    if (job.stage === 'to_site' && !c.path.length && Math.hypot(c.tile.x - o.site.x, c.tile.y - o.site.y) <= 1.5) {
+      job.stage = 'working';
+      c.actionLabel = 'Repairing the substation';
+      this.log('effect', `${first(c)} reached the substation and started repairs.`, c.id, { via: 'sim' });
+    } else if (job.stage === 'to_site' && !c.path.length) {
+      this.go(c, o.site); // re-plan (a closure may have changed the route)
+      if (!c.path.length) { c.utility = null; c.cooldown = 5; o.assigned = o.assigned.filter((id) => id !== c.id); }
+    }
+  }
+
+  // ------------------------------------------------------------------ traffic (sim v7)
+
+  private stepTraffic() {
+    // Intersection modes: dark signals become all-way stops unless a responder is directing.
+    for (const i of this.traffic.intersections) {
+      const ctl = this.traffic.control[i.id];
+      if (ctl.mode === 'responder_directed') continue;
+      ctl.mode = this.powerAt(i.x, i.y) < 0.5 ? 'all_way_stop' : 'signals';
+    }
+    const walkers = this.citizens.filter((c) => !c.inside && c.inVehicle === null && c.trafficJob?.stage !== 'directing').map((c) => c.pos);
+    this.traffic.step({ drivable: this.drivable, power: (x, y) => this.powerAt(x, y), walkers });
+  }
+
+  private staffedIntersections() {
+    return this.citizens.filter((c) => c.trafficJob).map((c) => c.trafficJob!.intersectionId);
+  }
+
+  /** Dark, backed-up intersection nobody is directing: the simulation picks by congestion, then id. */
+  private trafficTarget(c: Citizen, reach: Int16Array) {
+    if (!this.blackout) return null;
+    const staffed = this.staffedIntersections();
+    if (staffed.length >= MAX_TRAFFIC_CONTROLLERS) return null;
+    let best: { id: string; x: number; y: number } | null = null, bestQ = -1, bestW = -1;
+    for (const i of this.traffic.intersections) {
+      if (staffed.includes(i.id) || this.traffic.control[i.id].mode !== 'all_way_stop') continue;
+      const st = this.traffic.stats[i.id];
+      if (st.queued < 3 && st.avgWaitTicks <= 80) continue;
+      if (reach[i.y * this.W + i.x] < 0) continue;
+      if (st.queued > bestQ || (st.queued === bestQ && st.avgWaitTicks > bestW) || (st.queued === bestQ && st.avgWaitTicks === bestW && best && i.id < best.id)) {
+        best = i; bestQ = st.queued; bestW = st.avgWaitTicks;
+      }
+    }
+    return best;
+  }
+
+  private updateTrafficJob(c: Citizen) {
+    const job = c.trafficJob!;
+    const i = this.traffic.intersections.find((x) => x.id === job.intersectionId)!;
+    const ctl = this.traffic.control[i.id];
+    if (job.stage === 'en_route') {
+      if (!this.blackout || this.powerAt(i.x, i.y) >= 0.5) { c.trafficJob = null; c.cooldown = 5; return; }
+      if (!c.path.length && c.tile.x === i.x && c.tile.y === i.y) {
+        job.stage = 'directing';
+        job.since = this.tick;
+        ctl.mode = 'responder_directed';
+        ctl.controllerId = c.id;
+        ctl.since = this.traffic.clock;
+        c.pos = { x: i.x + 0.42, y: i.y + 0.42 }; // stand on the corner, out of the lanes
+        c.actionLabel = 'Directing traffic';
+        this.log('effect', `${first(c)} is directing traffic at a dark intersection.`, c.id, { via: 'sim' });
+      } else if (!c.path.length) {
+        this.go(c, i);
+        if (!c.path.length) { c.trafficJob = null; c.cooldown = 5; }
+      }
+      return;
+    }
+    // directing: hand back to the lights once they are on again, or after a long shift
+    if (this.powerAt(i.x, i.y) >= 0.5 || this.tick - job.since > 700) {
+      ctl.mode = this.powerAt(i.x, i.y) >= 0.5 ? 'signals' : 'all_way_stop';
+      ctl.controllerId = null;
+      c.trafficJob = null;
+      c.pos = { ...c.tile };
+      c.action = null;
+      c.actionLabel = this.powerAt(i.x, i.y) >= 0.5 ? 'Signals back on — handed over' : 'Finished a traffic shift';
+      c.cooldown = 5;
+      this.log('effect', `${first(c)} ${this.powerAt(i.x, i.y) >= 0.5 ? 'handed the intersection back to the traffic signals' : 'finished a shift directing traffic'}.`, c.id, { via: 'sim' });
+    }
+  }
+
   // ------------------------------------------------------------------ decision support queries
 
   private nearestNeedy(c: Citizen, reach: Int16Array, maxDist = 7.5): Citizen | null {
@@ -847,6 +1143,9 @@ export class Simulation {
     if (known && (hz === 'nearby' || hz === 'immediate') && this.safeSpot(reach)) out.push('move_away_from_hazard');
     if (hz !== 'immediate' && this.familyToCheck(c, reach).length) out.push('check_on_family');
     if (hz !== 'immediate' && this.tick >= c.warnCooldownUntil && this.warnTarget(c, reach)) out.push('warn_others');
+    const o = this.power.order;
+    if (c.role === 'utility' && o && this.power.status !== 'restored' && this.repairSiteSafe && o.assigned.length < MAX_UTILITY_CREW && !o.assigned.includes(c.id) && can(o.site)) out.push('restore_power');
+    if (c.role === 'responder' && known && !c.helpingId && this.trafficTarget(c, reach)) out.push('direct_traffic');
     if (this.festival.phase === 'open' && !this.incidentActive && c.festivalUntil === null && c.action !== 'attend_festival' && this.festivalSlotFree() >= 0 && FEST_SLOTS.some((s) => can(s))) out.push('attend_festival');
     return out;
   }
@@ -859,7 +1158,7 @@ export class Simulation {
     const famRec = fam ? c.family[fam.id] : null;
     const crowd = this.festival.slots.filter(Boolean).length;
     return {
-      contractVersion: 'jev-city-decision-v2',
+      contractVersion: 'jev-city-decision-v3',
       scenario: this.scenario,
       seed: this.seed,
       simulationMinute: this.minute,
@@ -895,6 +1194,28 @@ export class Simulation {
         festival: this.festival.phase,
         festivalCrowd: this.festival.phase === 'none' || crowd === 0 ? 'none' : crowd <= 4 ? 'light' : crowd <= 8 ? 'moderate' : 'busy',
         festivalReachable: this.festival.phase === 'open' && FEST_SLOTS.some((s) => can(s)),
+        householdAtFestival: Object.keys(c.family).filter((id) => this.citizen(id).festivalUntil !== null).length,
+        power: (() => {
+          const o = this.power.order;
+          const utility = c.role === 'utility' && !!o && this.power.status !== 'restored';
+          return {
+            gridStatus: this.powerAt(c.tile.x, c.tile.y) < 0.5 ? 'outage' : 'online',
+            workOrderOpen: utility,
+            repairSiteReachable: utility && can(o!.site),
+            repairSiteSafe: utility && this.repairSiteSafe,
+            utilityCrewOnSite: utility ? this.workersOnSite().length + (o!.contractor.stage === 'working' ? 1 : 0) : 0,
+          } as const;
+        })(),
+        traffic: (() => {
+          const near = this.traffic.intersections.filter((i) => Math.hypot(i.x - c.tile.x, i.y - c.tile.y) <= 6);
+          const dark = near.some((i) => this.traffic.control[i.id].mode !== 'signals');
+          const q = Math.max(0, ...near.filter((i) => this.traffic.control[i.id].mode !== 'signals').map((i) => this.traffic.stats[i.id].queued));
+          return {
+            darkSignalsNearby: dark,
+            trafficControlNeeded: c.role === 'responder' && this.incidentKnown(c) && this.trafficTarget(c, reach) !== null,
+            congestionTier: q >= 3 ? 'heavy' : q >= 1 ? 'light' : 'none',
+          } as const;
+        })(),
       },
       eligibleActionIds: eligible,
     };
@@ -922,7 +1243,7 @@ export class Simulation {
       // Only one safe option (or none): no model is asked; the simulation acts and says so.
       const only: ActionId = eligible[0] ?? 'wait';
       c.lastDecision = {
-        id: key, contractVersion: 'jev-city-decision-v2', scenario: this.scenario, citizenId: c.id, simulatedAtMinute: this.minute,
+        id: key, contractVersion: 'jev-city-decision-v3', scenario: this.scenario, citizenId: c.id, simulatedAtMinute: this.minute,
         engine: 'simulation', provenance: 'simulation', requestedModel: null, resolvedModel: null, modelTopChoice: null,
         enactedChoice: only, samplingPolicy: 'deterministic-override',
         overrideReason: eligible.length ? 'only one safe option was available, so no model was asked' : 'no safe route was available, so the citizen stays put',
@@ -1045,6 +1366,27 @@ export class Simulation {
         }
         break;
       }
+      case 'restore_power': {
+        const o = this.power.order!;
+        o.assigned.push(c.id);
+        c.utility = { orderId: o.id, stage: 'to_van', vanId: null };
+        const road = this.traffic.nearestRoadTile(c.tile, this.drivable);
+        const far = Math.hypot(o.site.x - c.tile.x, o.site.y - c.tile.y) > 6;
+        if (road && far) { this.go(c, road); c.actionLabel = 'Heading to the utility van'; }
+        else { c.utility.stage = 'to_site'; this.go(c, o.site); c.actionLabel = 'Walking to the substation'; }
+        c.cooldown = 9999;
+        break;
+      }
+      case 'direct_traffic': {
+        const i = this.trafficTarget(c, reach);
+        if (i) {
+          c.trafficJob = { intersectionId: i.id, stage: 'en_route', since: this.tick };
+          this.go(c, i);
+          c.actionLabel = 'Going to direct traffic';
+          c.cooldown = 9999;
+        }
+        break;
+      }
       case 'attend_festival': {
         const i = this.festivalSlotFree();
         if (i >= 0) {
@@ -1073,6 +1415,7 @@ export class Simulation {
     }
 
     if (c.needsHelp || c.care !== 'none') return;
+    if (c.inVehicle !== null) { this.updateUtilityJob(c); return; }
     // Free a festival spot if the citizen has gone off to do something else.
     const slot = this.festival.slots.indexOf(c.id);
     if (slot >= 0 && c.action !== 'attend_festival') this.festival.slots[slot] = null;
@@ -1096,6 +1439,8 @@ export class Simulation {
       this.tendHelp(c);
     }
 
+    if (c.utility) { this.updateUtilityJob(c); return; }
+    if (c.trafficJob) { this.updateTrafficJob(c); return; }
     if (c.festivalUntil !== null) {
       if (this.tick >= c.festivalUntil) {
         c.festivalUntil = null;
@@ -1132,7 +1477,7 @@ export class Simulation {
   }
 
   private arrive(c: Citizen) {
-    if (c.helpingId) return;
+    if (c.helpingId || c.utility || c.trafficJob) return;
     const at = this.map.buildings.find((b) => b.door.x === c.tile.x && b.door.y === c.tile.y);
     if (c.action === 'check_on_family' && c.taskTargetId) this.searchArrived(c, at?.id ?? null);
     if (c.action === 'attend_festival' && this.festival.slots.includes(c.id) && c.festivalUntil === null) {

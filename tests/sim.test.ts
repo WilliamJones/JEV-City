@@ -16,10 +16,11 @@ const rules = (s: Simulation) => { for (const r of s.outbox.splice(0)) s.provide
 const snapshot = (s: Simulation) => JSON.stringify(s.citizens.map((c) => [c.id, c.pos, c.action, c.needsHelp, c.inside]));
 
 describe('F01 seeding and determinism', () => {
-  it.each(SCENARIOS)('%s starts with 25 unique citizens', (sc) => {
+  it.each(SCENARIOS)('%s starts with its full population of unique citizens', (sc) => {
     const ids = new Simulation(sc, 2401).citizens.map((c) => c.id);
-    expect(ids).toHaveLength(25);
-    expect(new Set(ids).size).toBe(25);
+    const n = sc === 'big_city_blackout' ? 100 : 25;
+    expect(ids).toHaveLength(n);
+    expect(new Set(ids).size).toBe(n);
   });
 
   it.each(SCENARIOS)('%s: same seed + decisions => identical world', (sc) => {

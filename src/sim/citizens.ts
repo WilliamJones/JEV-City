@@ -9,6 +9,8 @@ export type CitizenSeed = {
   role: Role;
   occupation: string;
   homeId: string;
+  /** People in the same household look out for each other (same as homeId in the standard district). */
+  householdId: string;
   workId: string | null;
   traits: Traits;
   /** Palette indices for the sprite. */
@@ -53,6 +55,12 @@ export type Citizen = CitizenSeed & {
   reunionTick: number | null;
   warnedTick: number | null;
   warnGaveTick: number | null;
+  /** restore_power job: walk to the van, drive to the substation, walk to the site, work (sim v7). */
+  utility: { orderId: string; stage: 'to_van' | 'driving' | 'to_site' | 'working'; vanId: number | null } | null;
+  /** direct_traffic job at one dark intersection. */
+  trafficJob: { intersectionId: string; stage: 'en_route' | 'directing'; since: number } | null;
+  /** Riding in a service vehicle (hidden on the map; position follows the vehicle). */
+  inVehicle: number | null;
   safetyTick: number | null;
 };
 
@@ -72,7 +80,7 @@ const ROLES: { role: Role; occupation: string; work: string | null }[] = [
   { role: 'resident', occupation: 'Designer', work: 'office' },
   { role: 'resident', occupation: 'Retiree', work: null },
   { role: 'resident', occupation: 'Student', work: 'office' },
-  { role: 'resident', occupation: 'Engineer', work: 'office' },
+  { role: 'utility', occupation: 'Grid engineer', work: 'substation' },
   { role: 'service', occupation: 'Shopkeeper', work: 'shop' },
   { role: 'resident', occupation: 'Courier', work: 'market' },
   { role: 'resident', occupation: 'Retiree', work: null },
@@ -88,7 +96,7 @@ const ROLES: { role: Role; occupation: string; work: string | null }[] = [
   { role: 'resident', occupation: 'Lawyer', work: 'office' },
   { role: 'resident', occupation: 'Retiree', work: null },
   { role: 'resident', occupation: 'Writer', work: null },
-  { role: 'resident', occupation: 'Electrician', work: 'office' },
+  { role: 'utility', occupation: 'Line technician', work: 'substation' },
   { role: 'resident', occupation: 'Nurse student', work: 'office' },
 ];
 
@@ -107,6 +115,7 @@ export function createPopulation(seed: number, map: CityMap): CitizenSeed[] {
       role: r.role,
       occupation: r.occupation,
       homeId: HOMES[i % HOMES.length],
+      householdId: HOMES[i % HOMES.length],
       workId: r.work,
       traits: {
         caution: round2(rng.range(0.1, 0.95)),
@@ -151,6 +160,9 @@ export function spawnCitizen(s: CitizenSeed, start: Tile, plan: Plan, needs: Nee
     reunionTick: null,
     warnedTick: null,
     warnGaveTick: null,
+    utility: null,
+    trafficJob: null,
+    inVehicle: null,
     safetyTick: null,
   };
 }

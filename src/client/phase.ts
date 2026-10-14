@@ -10,7 +10,6 @@ import {
   METEOR_CREW_TICK,
   METEOR_IMPACT_TICK,
   METEOR_WARN_TICK,
-  POWER_RESTORED_TICK,
   type Simulation,
 } from '@/sim/world';
 
@@ -23,11 +22,26 @@ export function scenarioPhase(sim: Simulation): Phase {
   const helpNote = needy ? ` ${needy} ${needy === 1 ? 'person needs' : 'people need'} help (red ! markers).` : '';
   if (sim.scenario === 'ordinary_morning')
     return { label: 'An ordinary morning', detail: 'No emergency. Citizens commute, shop and run errands — watch how traits and needs shape everyday choices.', tone: 'calm' };
-  if (sim.scenario === 'blackout') {
+  if (sim.scenario === 'blackout' || sim.scenario === 'big_city_blackout') {
     if (t < BLACKOUT_TICK) return { label: 'Evening — power is on', detail: 'Windows and streetlights are lit. The substation (lightning-bolt roof) is about to fail.', tone: 'calm' };
-    if (t < BLACKOUT_TICK + 60) return { label: 'Blackout spreading', detail: 'The outage ripples out from the substation. Signals go dark and intersections become all-way stops.' + helpNote, tone: 'alert' };
-    if (t < POWER_RESTORED_TICK) return { label: 'City in the dark', detail: 'The clinic runs on its generator (glowing red cross); the corner store stays open by lantern. Every citizen is re-deciding what to do.' + helpNote, tone: 'alert' };
-    return { label: 'Power restored', detail: 'Lights return outward from the substation and citizens drift back to their routines.', tone: 'recovery' };
+    const p = powerPhase(sim);
+    return { ...p, detail: p.detail + trafficNote(sim) + helpNote };
+  }
+  if (sim.scenario === 'meteor_blackout') {
+    const m = sim.meteorCfg!;
+    if (t < m.warnTick) return { label: 'An ordinary early evening', detail: 'Power and traffic signals are working normally.', tone: 'calm' };
+    if (t < m.impactTick) return { label: 'Meteor warning', detail: 'Meteor warning — an impact is expected near the utility corridor.', tone: 'alert' };
+    if (t < m.impactTick + 60) return { label: 'Impact', detail: 'A meteor has struck near the substation. Nearby roads are closed.' + helpNote, tone: 'alert' };
+    const roadsOpen = sim.clearedTick !== null, powerOn = sim.power.status === 'restored';
+    if (roadsOpen && powerOn) return { label: 'Fully recovered', detail: 'Power and road access have been restored.', tone: 'recovery' };
+    if (powerOn) return { label: 'Power first', detail: 'Electricity has been restored, but the impact area remains closed.' + helpNote, tone: 'recovery' };
+    if (roadsOpen) return { label: 'Roads first', detail: 'The affected road has reopened. Some neighbourhoods remain without power.' + trafficNote(sim), tone: 'recovery' };
+    const repairing = sim.power.status === 'repairing';
+    if (sim.crewOnSite && repairing) return { label: 'Two crews at work', detail: 'Road crews are clearing debris while utility workers repair the substation.' + trafficNote(sim), tone: 'recovery' };
+    if (t < m.impactTick + 160 && !repairing) return { label: 'Outage spreading', detail: 'The impact has damaged the power grid. Outages are spreading through nearby blocks.' + trafficNote(sim) + helpNote, tone: 'alert' };
+    const pp = powerPhase(sim);
+    if (!sim.crewOnSite && !repairing && sim.power.order?.assigned.length === 0) return { label: 'Awaiting crews', detail: 'Road clearance and electrical repairs are awaiting crews.' + trafficNote(sim) + helpNote, tone: 'alert' };
+    return { ...pp, detail: pp.detail + (sim.crewOnSite ? ' Road crews are clearing the crater.' : '') + trafficNote(sim) + helpNote };
   }
   if (sim.scenario === 'meteor') {
     if (t < METEOR_WARN_TICK) return { label: 'A calm afternoon', detail: 'Nothing has happened yet. Something is about to appear in the sky above the market.', tone: 'calm' };
@@ -39,7 +53,7 @@ export function scenarioPhase(sim: Simulation): Phase {
   if (sim.scenario === 'building_fire') {
     const f = sim.fire;
     const unaware = sim.citizens.filter((c) => c.alert === 'none').length;
-    const awareNote = unaware ? ` ${unaware} of 25 people haven’t heard yet.` : '';
+    const awareNote = unaware ? ` ${unaware} of ${sim.citizens.length} people haven’t heard yet.` : '';
     if (f.phase === 'none') return { label: 'A quiet afternoon', detail: 'Office workers are at their desks. Nothing is wrong — yet.', tone: 'calm' };
     if (f.phase === 'smoke') return { label: 'Smoke near the office', detail: 'Smoke is visible near the office. Only people close enough to see it know so far.' + awareNote, tone: 'alert' };
     if (f.phase === 'burning') {
@@ -55,7 +69,7 @@ export function scenarioPhase(sim: Simulation): Phase {
   }
   if (sim.scenario === 'street_festival') {
     const n = sim.festivalCrowd();
-    const crowd = `${n} of the 25 citizens ${n === 1 ? 'is' : 'are'} at the festival right now — only real decisions count; grey-toned visitors are scenery.`;
+    const crowd = `${n} of the ${sim.citizens.length} citizens ${n === 1 ? 'is' : 'are'} at the festival right now — only real decisions count; grey-toned visitors are scenery.`;
     if (t < FEST_OPEN_TICK) return { label: 'Festival setting up', detail: 'Festival preparations are underway near the market. The plaza road is closed to cars.', tone: 'calm' };
     if (t < FEST_PEAK_TICK) return { label: 'Festival open', detail: 'The street festival is open. Citizens can choose to attend. ' + crowd, tone: 'calm' };
     if (t < FEST_CLOSING_TICK) return { label: 'Festival in full swing', detail: 'Music and stalls on the plaza; traffic detours around the closed road. ' + crowd, tone: 'calm' };
@@ -73,4 +87,30 @@ export function scenarioPhase(sim: Simulation): Phase {
   }
   if (fl.phase === 'receding') return { label: 'Water receding', detail: `Rain is easing and drainage is underway. ${closed} tiles are still closed to cars.` + helpNote, tone: 'recovery' };
   return { label: 'Streets dry again', detail: 'Every street has reopened. Citizens return to normal life.', tone: 'recovery' };
+}
+
+/** Power-grid narration (sim v7) — each line only when its condition is actually true. */
+function powerPhase(sim: Simulation): Phase {
+  const p = sim.power, o = p.order;
+  if (p.status === 'restored') return { label: 'Power restored', detail: 'Power has been restored. Traffic signals and building lights are returning.', tone: 'recovery' };
+  if (!o) return { label: 'Power is on', detail: '', tone: 'calm' };
+  const pct = Math.round((o.workCompleted / o.workRequired) * 100);
+  const enRoute = sim.citizens.some((c) => c.utility && c.utility.stage !== 'working');
+  if (p.status === 'outage') return { label: 'Power fault', detail: 'A power fault has been detected. Utility repairs are needed — the site is being made safe first.', tone: 'alert' };
+  if (o.contractor.stage === 'working') return { label: 'Backup crew on site', detail: `A backup utility crew has arrived to assist with repairs. Repair ${pct}% done.`, tone: 'recovery' };
+  if (p.status === 'repairing') return { label: 'Repairing the grid', detail: `Utility workers are repairing the electrical system. Repair ${pct}% done.`, tone: 'recovery' };
+  if (enRoute) return { label: 'Utility crew on the way', detail: 'A utility worker is traveling to the substation.', tone: 'alert' };
+  if (o.contractor.stage === 'driving' || o.contractor.stage === 'walking') return { label: 'Backup crew on the way', detail: 'A backup utility crew is driving to the substation.', tone: 'alert' };
+  if (o.contractor.stage === 'blocked') return { label: 'Backup crew blocked', detail: 'The backup utility crew cannot reach the substation yet — their route is blocked.', tone: 'alert' };
+  return { label: 'City in the dark', detail: 'The repair site is ready, but no utility workers have arrived. The clinic runs on its generator; the corner store stays open by lantern.', tone: 'alert' };
+}
+
+function trafficNote(sim: Simulation): string {
+  if (!sim.blackout) return '';
+  const tr = sim.traffic;
+  const directed = tr.intersections.filter((i) => tr.control[i.id].mode === 'responder_directed').length;
+  if (directed) return ' A responder is manually directing vehicles through a dark intersection.';
+  if (sim.citizens.some((c) => c.trafficJob?.stage === 'en_route')) return ' A responder is traveling to help manage traffic.';
+  if (tr.intersections.some((i) => tr.control[i.id].mode === 'all_way_stop' && tr.stats[i.id].queued >= 3)) return ' Traffic is backing up at an unpowered intersection.';
+  return ' Traffic signals are dark. Drivers are treating intersections as all-way stops.';
 }

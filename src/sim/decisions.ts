@@ -4,7 +4,7 @@ import type { DecisionRequest } from './world';
 
 const base = (req: DecisionRequest) => ({
   id: req.key,
-  contractVersion: 'jev-city-decision-v2' as const,
+  contractVersion: 'jev-city-decision-v3' as const,
   scenario: req.input.scenario,
   citizenId: req.citizenId,
   simulatedAtMinute: req.input.simulationMinute,

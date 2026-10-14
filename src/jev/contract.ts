@@ -3,6 +3,8 @@ import {
   ACTION_IDS,
   ALERT_SOURCES,
   CLINIC_STATUSES,
+  CONGESTION_TIERS,
+  GRID_STATUSES,
   CROWD_LEVELS,
   FESTIVAL_PHASES,
   HAZARD_KINDS,
@@ -16,7 +18,7 @@ import {
   type JevAnswers,
 } from '@/sim/types';
 
-export const CONTRACT_VERSION = 'jev-city-decision-v2' as const;
+export const CONTRACT_VERSION = 'jev-city-decision-v3' as const;
 export const PINNED_MODEL = 'jev-1.13.0';
 
 const unit = z.number().finite().min(0).max(1);
@@ -29,7 +31,7 @@ export const CitizenDecisionInputSchema = z
     simulationMinute: z.number().int().min(0).max(1439),
     citizen: z
       .object({
-        id: z.string().regex(/^citizen-\d{2}$/),
+        id: z.string().regex(/^citizen-\d{2,3}$/),
         role: z.enum(ROLES),
         locationId: z.string().regex(/^[a-z0-9-]{1,40}$/),
         currentPlan: z.enum(PLANS),
@@ -64,6 +66,23 @@ export const CitizenDecisionInputSchema = z
         festival: z.enum(FESTIVAL_PHASES),
         festivalCrowd: z.enum(CROWD_LEVELS),
         festivalReachable: z.boolean(),
+        householdAtFestival: z.number().int().min(0).max(8),
+        power: z
+          .object({
+            gridStatus: z.enum(GRID_STATUSES),
+            workOrderOpen: z.boolean(),
+            repairSiteReachable: z.boolean(),
+            repairSiteSafe: z.boolean(),
+            utilityCrewOnSite: z.number().int().min(0).max(4),
+          })
+          .strict(),
+        traffic: z
+          .object({
+            darkSignalsNearby: z.boolean(),
+            trafficControlNeeded: z.boolean(),
+            congestionTier: z.enum(CONGESTION_TIERS),
+          })
+          .strict(),
       })
       .strict(),
     eligibleActionIds: z
@@ -89,6 +108,9 @@ export const ACTION_CRITERIA: Record<ActionId, string> = {
   check_on_family: 'Travel to the last known location of a household or family member to check on their wellbeing during a disruption.',
   warn_others: 'Travel to nearby people who have not received a credible hazard warning and communicate the known danger.',
   attend_festival: 'Visit an open public festival to participate in social activities, entertainment, or community gatherings.',
+  // Added in jev-city-actions-v3 (2026-10-14 v7 review).
+  restore_power: 'Travel to an assigned electrical repair site and help restore power by working on an active utility work order.',
+  direct_traffic: 'Travel to a reachable intersection with inactive traffic signals and manually direct queued vehicles until relieved or normal signals resume.',
 };
 
 export const RISK_RUBRIC = [

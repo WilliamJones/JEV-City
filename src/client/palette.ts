@@ -39,6 +39,8 @@ export const ACTION_COLOR: Record<ActionId, number> = {
   check_on_family: 0x9a6a4a,
   warn_others: 0xe9b824,
   attend_festival: 0x2fa9de,
+  restore_power: 0xf28c28,
+  direct_traffic: 0x5b6ee1,
 };
 
 export const ACTION_LABEL: Record<ActionId, string> = {
@@ -54,6 +56,8 @@ export const ACTION_LABEL: Record<ActionId, string> = {
   check_on_family: 'Check on family',
   warn_others: 'Warn others',
   attend_festival: 'Attend festival',
+  restore_power: 'Restore power',
+  direct_traffic: 'Direct traffic',
 };
 
 export const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;

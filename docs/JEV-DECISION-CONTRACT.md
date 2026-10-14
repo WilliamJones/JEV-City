@@ -222,3 +222,14 @@ Implemented in `src/sim/types.ts` and `src/jev/contract.ts`. The upstream TypeSa
 **Perception rule:** `hazard`/`hazardKind` describe what the citizen could know. For fires and floods a citizen with `alertSource: none` is sent `hazard: none` even if the map is dangerous nearby — they have not seen it and nobody has told them.
 
 **Fewer than two safe options:** no model is called. The simulation enacts the single option (or stays put) and records provenance `simulation` with a reason. These never appear as JEV output.
+
+## Addendum — `jev-city-decision-v3` (sim v7, 2026-10-14)
+
+Two more actions (14 total), criteria verbatim from the v7 review:
+
+| Key | Criteria text |
+|---|---|
+| `restore_power` | Travel to an assigned electrical repair site and help restore power by working on an active utility work order. |
+| `direct_traffic` | Travel to a reachable intersection with inactive traffic signals and manually direct queued vehicles until relieved or normal signals resume. |
+
+New DTO fields: role `utility`; `local.householdAtFestival`; `local.power { gridStatus, workOrderOpen, repairSiteReachable, repairSiteSafe, utilityCrewOnSite }` (work-order details only for utility staff; everyone else just sees whether the lights are out); `local.traffic { darkSignalsNearby, trafficControlNeeded (responders only), congestionTier }`. Citizen ids may be 3 digits (Big City). Still one request with the same four questions.

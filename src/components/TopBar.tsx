@@ -12,7 +12,7 @@ export const MODE_BADGE: Record<Mode, { label: string; color: string }> = {
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
-export const SCENARIO_ICON: Record<ScenarioId, string> = { ordinary_morning: '☀︎', blackout: '⚡︎', meteor: '☄︎', building_fire: '♨︎', street_festival: '♫', flash_flood: '☂︎' };
+export const SCENARIO_ICON: Record<ScenarioId, string> = { ordinary_morning: '☀︎', blackout: '⚡︎', meteor: '☄︎', building_fire: '♨︎', street_festival: '♫', flash_flood: '☂︎', meteor_blackout: '☄︎⚡︎', big_city_blackout: '▦' };
 
 export function TopBar({ ctrl, onScenario, onMode, liveAvailable, onHelp }: { ctrl: Controller; onScenario: (s: ScenarioId) => void; onMode: (m: Mode) => void; liveAvailable: boolean; onHelp: () => void }) {
   const badge = MODE_BADGE[ctrl.mode];

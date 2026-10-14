@@ -159,7 +159,8 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
             </>}
           </p>
         </div>
-        <button className="chip px-2.5 py-1 text-xs font-semibold" onClick={() => { ctrl.selectedId = null; ctrl.notify(true); }} aria-label="Close inspector">✕</button>
+        <button className="chip px-2.5 py-1 text-xs font-semibold" aria-pressed={ctrl.followId === c.id} onClick={() => { ctrl.followId = ctrl.followId === c.id ? null : c.id; ctrl.notify(true); }} title="Keep the camera on this person">{ctrl.followId === c.id ? '◉ Following' : '◎ Follow'}</button>
+        <button className="chip px-2.5 py-1 text-xs font-semibold" onClick={() => { ctrl.selectedId = null; ctrl.followId = null; ctrl.notify(true); }} aria-label="Close inspector">✕</button>
       </div>
       <Status ctrl={ctrl} c={c} />
 
@@ -232,6 +233,8 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
               const un = sim.unaccountedFor(c);
               if (un) facts.push(`${un} housemate${un > 1 ? 's' : ''} unaccounted for`);
               if (sim.festival.phase === 'open') facts.push('Festival open');
+              if (sim.power.outageTick !== null && sim.power.status !== 'restored' && sim.powerAt(c.tile.x, c.tile.y) < 0.5) facts.push('Lights out here');
+              if (c.role === 'utility' && sim.power.order && sim.power.status !== 'restored') facts.push(`Work order: ${sim.repairSiteSafe ? 'site safe' : 'site not safe yet'}`);
               facts.push(`Plan: ${c.plan.replaceAll('_', ' ')}`);
               return facts.map((f) => <span key={f} className="chip px-2 py-0.5">{f}</span>);
             })()}
@@ -272,6 +275,8 @@ function Status({ ctrl, c }: { ctrl: Controller; c: Citizen }) {
   const alert = ALERT_TEXT(ctrl, c);
   if (alert) chips.push({ text: alert, color: c.alert === 'none' ? 'var(--ink-faint)' : '#e9b824' });
   if (c.festivalUntil !== null) chips.push({ text: 'At the festival', color: '#2fa9de' });
+  if (c.utility) chips.push({ text: { to_van: 'Heading to the utility van', driving: 'Driving to the substation', to_site: 'Walking to the repair site', working: 'Repairing the substation' }[c.utility.stage], color: '#f28c28' });
+  if (c.trafficJob) chips.push({ text: c.trafficJob.stage === 'directing' ? 'Directing traffic' : 'Going to direct traffic', color: '#5b6ee1' });
   const fam = Object.keys(c.family).map((id) => ctrl.sim.citizen(id).name.split(' ')[0]);
   if (!chips.length && !fam.length) return null;
   return (

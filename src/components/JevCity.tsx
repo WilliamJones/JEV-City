@@ -134,8 +134,15 @@ export default function JevCity() {
             <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={() => setLegendOpen((v) => !v)} aria-pressed={legendOpen}>
               Legend
             </button>
-            <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={() => rendererRef.current?.resetCamera()}>
-              Recenter
+            {ctrl.sim.map.w > 30 && (
+              <div className="panel flex items-center gap-0.5 px-1 py-1 text-xs font-semibold" role="group" aria-label="Camera presets">
+                {(['nw', 'ne', 'centre', 'sw', 'se'] as const).map((v) => (
+                  <button key={v} className="rounded-full px-2 py-0.5 hover:bg-[var(--chip)]" onClick={() => { ctrl.followId = null; rendererRef.current?.presetView(v); }}>{v === 'centre' ? '◎' : v.toUpperCase()}</button>
+                ))}
+              </div>
+            )}
+            <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={() => { ctrl.followId = null; rendererRef.current?.resetCamera(); }}>
+              {ctrl.sim.map.w > 30 ? 'Fit city' : 'Recenter'}
             </button>
           </div>
         </div>

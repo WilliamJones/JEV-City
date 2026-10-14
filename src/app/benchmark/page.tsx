@@ -83,6 +83,7 @@ export default async function BenchmarkPage({ searchParams }: { searchParams: Pr
         <header className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/" className="font-[family-name:var(--font-display)] text-xl font-bold tracking-tight">JEV<span style={{ color: 'var(--teal)' }}>·</span>CITY</Link>
           <a href="/benchmark/results.json" download className="chip px-3 py-1.5 text-xs font-semibold">Download every call (JSON)</a>
+          <a href="/benchmark/results-sim-v6.json" download className="px-1 py-1.5 text-xs underline" style={{ color: 'var(--ink-soft)' }} title="Earlier run on 6-scenario sim v6 snapshots; not directly comparable">Archived sim-v6 run</a>
           <a href="/benchmark/results-sim-v5.json" download className="px-1 py-1.5 text-xs underline" style={{ color: 'var(--ink-soft)' }} title="Earlier run on the 3-scenario sim v5 snapshots; not directly comparable">Archived sim-v5 run</a>
         </header>
 

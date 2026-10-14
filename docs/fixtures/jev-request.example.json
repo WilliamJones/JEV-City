@@ -1,7 +1,7 @@
 {
   "model": "jev-1.13.0",
   "state": {
-    "contractVersion": "jev-city-decision-v2",
+    "contractVersion": "jev-city-decision-v3",
     "scenario": "blackout",
     "seed": 2401,
     "simulationMinute": 1130,
@@ -43,7 +43,20 @@
       },
       "festival": "none",
       "festivalCrowd": "none",
-      "festivalReachable": false
+      "festivalReachable": false,
+      "householdAtFestival": 0,
+      "power": {
+        "gridStatus": "outage",
+        "workOrderOpen": false,
+        "repairSiteReachable": false,
+        "repairSiteSafe": false,
+        "utilityCrewOnSite": 0
+      },
+      "traffic": {
+        "darkSignalsNearby": true,
+        "trafficControlNeeded": false,
+        "congestionTier": "light"
+      }
     },
     "eligibleActionIds": [
       "go_home",
