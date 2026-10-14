@@ -1,0 +1,33 @@
+{
+  "capturedAt": "2026-10-14T04:17:52.545Z",
+  "note": "Measured upstream round-trip from a developer laptop (concurrent requests); not browser time.",
+  "seed": 2401,
+  "ticksPerScenario": 300,
+  "requests": 196,
+  "succeeded": 196,
+  "failed": 0,
+  "errors": {},
+  "resolvedModels": [
+    "jev-1.13.0"
+  ],
+  "upstreamMs": {
+    "n": 196,
+    "min": 78,
+    "p50": 92,
+    "p95": 174,
+    "max": 226
+  },
+  "tokens": {
+    "meanInput": 946,
+    "meanOutput": 110
+  },
+  "topChoiceCounts": {
+    "seek_supplies": 69,
+    "continue_routine": 53,
+    "go_home": 29,
+    "help_neighbor": 10,
+    "seek_shelter": 20,
+    "report_for_duty": 15
+  },
+  "decisiveShare": 0.08
+}
