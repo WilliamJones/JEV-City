@@ -83,7 +83,7 @@ export class CityRenderer {
     this.drawStreetlights();
     this.drawDecor();
     for (const b of BUILDINGS) this.drawBuilding(b);
-    this.traffic = new Traffic(this.objects, this.lights, this.glow, this.tintables);
+    this.traffic = new Traffic(this.objects, this.lights, this.glow, this.tintables, this.markers);
     this.setupFx();
     this.setupInput(ctrl);
     this.fit();
@@ -733,7 +733,7 @@ export class CityRenderer {
     if (t < POWER_RESTORED_TICK) {
       const front = (t - BLACKOUT_TICK) * 0.28;
       if (front >= d + 1.2) return 0;
-      if (front >= d - 0.4) return Math.sin(performance.now() / 30 + d * 7) > 0 ? 1 : 0.15; // flicker as the wave hits
+      if (front >= d - 0.4) return this.reducedMotion ? 0.5 : Math.sin(performance.now() / 30 + d * 7) > 0 ? 1 : 0.15; // flicker as the wave hits
       return 1;
     }
     const front = (t - POWER_RESTORED_TICK) * 0.35;
@@ -791,7 +791,8 @@ export class CityRenderer {
     }
 
     const speed = ctrl.paused ? 0 : ctrl.speed * (sim.stalled ? 0 : 1);
-    this.traffic.update(dt * speed, sim.walkable, this.night, sim.scenario === 'blackout' ? this.power(sim, 11, 11) : 1);
+    const walkers = sim.citizens.filter((c) => !c.inside).map((c) => c.pos);
+    this.traffic.update(dt * speed, sim.walkable, this.night, (x, y) => this.power(sim, x, y), walkers);
 
     this.updateSparks(sim, dt);
     this.drawHazard(ctrl, t);
@@ -850,7 +851,7 @@ export class CityRenderer {
 
   private updateSparks(sim: Simulation, dt: number) {
     const sp = iso(SUBSTATION.x, SUBSTATION.y);
-    const burst = sim.scenario === 'blackout' && sim.tick >= BLACKOUT_TICK - 2 && sim.tick < BLACKOUT_TICK + 25;
+    const burst = !this.reducedMotion && sim.scenario === 'blackout' && sim.tick >= BLACKOUT_TICK - 2 && sim.tick < BLACKOUT_TICK + 25;
     for (const s of this.sparks) {
       if (s.life <= 0 && burst) {
         s.life = 0.4 + Math.random() * 0.6;
@@ -897,7 +898,7 @@ export class CityRenderer {
     if (!hz) return;
     const since = (sim.tick - hz.impactTick) * 0.1;
     if (since < 1.2) {
-      const a = Math.max(0, 0.85 - since * 0.75);
+      const a = Math.max(0, 0.85 - since * 0.75) * (this.reducedMotion ? 0.3 : 1);
       this.flash.rect(0, 0, this.app.screen.width, this.app.screen.height).fill({ color: 0xfff3e0, alpha: a });
       if (!this.reducedMotion && since < 0.5) this.world.position.x += Math.sin(t * 90) * 4 * (0.5 - since);
     }

@@ -55,14 +55,20 @@ function collectSnapshots(): CitizenDecisionInputV1[] {
 }
 
 // ---------- 2. Engines ----------
+type Track = 'A' | 'B';
+const TRACKS: Track[] = ['A', 'B'];
+const TRACK_INFO = {
+  A: 'Action selection: LLMs return only the chosen action (strict enum). JEV answers one Choice question.',
+  B: 'Action + uncertainty: LLMs return the action and a probability for every eligible action (what the JEV City inspector needs). JEV answers one Choice question, whose distribution is native.',
+};
 type Outcome = {
-  engine: string; snapshot: number; trial: number; ok: boolean; errorClass?: string;
+  track: Track; engine: string; snapshot: number; trial: number; ok: boolean; errorClass?: string;
   ms: number | null; choice?: string; probabilities?: Record<string, number>; probabilitySource?: 'model-native' | 'model-reported' | 'heuristic';
   inputTokens?: number; outputTokens?: number; costUsd?: number | null; costSource?: string; resolvedModel?: string; at: string;
 };
 
 /** Same single task as the LLMs: one Choice question over the eligible actions. */
-async function runJev(input: CitizenDecisionInputV1): Promise<Omit<Outcome, 'engine' | 'snapshot' | 'trial' | 'at'>> {
+async function runJev(input: CitizenDecisionInputV1): Promise<Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'>> {
   const full = buildJevRequest(input, PINNED_MODEL);
   const body = { model: full.model, state: full.state, questions: { next_action: full.questions.next_action } };
   const ctrl = new AbortController();
@@ -96,30 +102,32 @@ async function runJev(input: CitizenDecisionInputV1): Promise<Omit<Outcome, 'eng
   }
 }
 
-function llmPrompt(input: CitizenDecisionInputV1) {
+function llmPrompt(input: CitizenDecisionInputV1, track: Track) {
   const options = input.eligibleActionIds.map((id) => `- ${id}: ${ACTION_CRITERIA[id]}`).join('\n');
-  return `You are deciding the next action for a simulated citizen in a city simulation.\n\nCitizen state (JSON):\n${JSON.stringify(input)}\n\nWhich eligible next action best matches their current circumstances, needs, role and traits? Use only these eligible actions; do not assume unstated paths or capabilities:\n${options}\n\nReturn the chosen action and your probability for every eligible action (probabilities sum to 1).`;
+  return `You are deciding the next action for a simulated citizen in a city simulation.\n\nCitizen state (JSON):\n${JSON.stringify(input)}\n\nWhich eligible next action best matches their current circumstances, needs, role and traits? Use only these eligible actions; do not assume unstated paths or capabilities:\n${options}\n\n${track === 'A' ? 'Return only the chosen action.' : 'Return the chosen action and your probability for every eligible action (probabilities sum to 1).'}`;
 }
 
-async function runLlm(model: string, input: CitizenDecisionInputV1): Promise<Omit<Outcome, 'engine' | 'snapshot' | 'trial' | 'at'>> {
+async function runLlm(model: string, input: CitizenDecisionInputV1, track: Track): Promise<Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'>> {
   const props: Record<string, unknown> = {};
   for (const id of input.eligibleActionIds) props[id] = { type: 'number' };
   const body = {
     model,
-    messages: [{ role: 'user', content: llmPrompt(input) }],
+    messages: [{ role: 'user', content: llmPrompt(input, track) }],
     temperature: 0.2,
-    max_tokens: 300,
+    max_tokens: track === 'A' ? 60 : 300,
     response_format: {
       type: 'json_schema',
       json_schema: {
         name: 'decision', strict: true,
-        schema: {
-          type: 'object', additionalProperties: false, required: ['action', 'probabilities'],
-          properties: {
-            action: { type: 'string', enum: input.eligibleActionIds },
-            probabilities: { type: 'object', additionalProperties: false, required: input.eligibleActionIds, properties: props },
-          },
-        },
+        schema: track === 'A'
+          ? { type: 'object', additionalProperties: false, required: ['action'], properties: { action: { type: 'string', enum: input.eligibleActionIds } } }
+          : {
+              type: 'object', additionalProperties: false, required: ['action', 'probabilities'],
+              properties: {
+                action: { type: 'string', enum: input.eligibleActionIds },
+                probabilities: { type: 'object', additionalProperties: false, required: input.eligibleActionIds, properties: props },
+              },
+            },
       },
     },
     provider: { require_parameters: true, allow_fallbacks: false },
@@ -141,6 +149,13 @@ async function runLlm(model: string, input: CitizenDecisionInputV1): Promise<Omi
     const text: string = data.choices?.[0]?.message?.content ?? '';
     let parsed: { action?: string; probabilities?: Record<string, number> };
     try { parsed = JSON.parse(text); } catch { return { ok: false, errorClass: 'schema_violation: not JSON', ms, resolvedModel: data.model }; }
+    if (track === 'A') {
+      if (typeof parsed.action !== 'string' || !input.eligibleActionIds.includes(parsed.action as never)) return { ok: false, errorClass: 'schema_violation', ms, resolvedModel: data.model };
+      return {
+        ok: true, ms, choice: parsed.action, inputTokens: data.usage?.prompt_tokens, outputTokens: data.usage?.completion_tokens,
+        costUsd: typeof data.usage?.cost === 'number' ? data.usage.cost : null, costSource: 'OpenRouter-reported usage.cost', resolvedModel: data.model,
+      };
+    }
     const keys = Object.keys(parsed.probabilities ?? {});
     const valid = typeof parsed.action === 'string' && input.eligibleActionIds.includes(parsed.action as never)
       && keys.length === input.eligibleActionIds.length && keys.every((k) => input.eligibleActionIds.includes(k as never))
@@ -160,9 +175,10 @@ async function runLlm(model: string, input: CitizenDecisionInputV1): Promise<Omi
   }
 }
 
-function runRules(input: CitizenDecisionInputV1, trial: number): Omit<Outcome, 'engine' | 'snapshot' | 'trial' | 'at'> {
+/** Fixed seed per snapshot: the benchmark rules baseline is fully deterministic on identical inputs. */
+function runRules(input: CitizenDecisionInputV1): Omit<Outcome, 'track' | 'engine' | 'snapshot' | 'trial' | 'at'> {
   const t0 = performance.now();
-  const w = ruleWeights(input, trial);
+  const w = ruleWeights(input, 0);
   const ms = performance.now() - t0;
   return { ok: true, ms: Math.round(ms * 1000) / 1000, choice: argmax(w), probabilities: w, probabilitySource: 'heuristic', costUsd: 0, costSource: 'local compute' };
 }
@@ -174,12 +190,12 @@ async function main() {
   if (!process.env.TYPESAFE_API_KEY || !process.env.OPENROUTER_API_KEY) throw new Error('TYPESAFE_API_KEY and OPENROUTER_API_KEY required');
   const snapshots = collectSnapshots();
   const engines = ['jev', ...LLMS];
-  const tasks: { engine: string; snapshot: number; trial: number }[] = [];
-  for (let s = 0; s < snapshots.length; s++) for (let t = 0; t < TRIALS; t++) for (const e of engines) tasks.push({ engine: e, snapshot: s, trial: t });
+  const tasks: { track: Track; engine: string; snapshot: number; trial: number }[] = [];
+  for (const track of TRACKS) for (let s = 0; s < snapshots.length; s++) for (let t = 0; t < TRIALS; t++) for (const e of engines) tasks.push({ track, engine: e, snapshot: s, trial: t });
   const rng = createRng(20261014);
   for (let i = tasks.length - 1; i > 0; i--) { const j = Math.floor(rng.next() * (i + 1)); [tasks[i], tasks[j]] = [tasks[j], tasks[i]]; }
 
-  console.log(`${snapshots.length} snapshots × ${TRIALS} trials × ${engines.length} remote engines = ${tasks.length} calls (+ rules locally)`);
+  console.log(`${TRACKS.length} tracks × ${snapshots.length} snapshots × ${TRIALS} trials × ${engines.length} remote engines = ${tasks.length} calls (+ rules locally)`);
   const outcomes: Outcome[] = [];
   let next = 0, done = 0;
   const startedAt = new Date().toISOString();
@@ -187,16 +203,16 @@ async function main() {
     while (next < tasks.length) {
       const t = tasks[next++];
       const input = snapshots[t.snapshot];
-      const r = t.engine === 'jev' ? await runJev(input) : await runLlm(t.engine, input);
+      const r = t.engine === 'jev' ? await runJev(input) : await runLlm(t.engine, input, t.track);
       outcomes.push({ ...t, ...r, at: new Date().toISOString() });
       if (++done % 50 === 0) console.log(`  ${done}/${tasks.length}`);
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  for (let s = 0; s < snapshots.length; s++) for (let t = 0; t < TRIALS; t++) outcomes.push({ engine: 'rules', snapshot: s, trial: t, ...runRules(snapshots[s], t), at: new Date().toISOString() });
+  for (const track of TRACKS) for (let s = 0; s < snapshots.length; s++) for (let t = 0; t < TRIALS; t++) outcomes.push({ track, engine: 'rules', snapshot: s, trial: t, ...runRules(snapshots[s]), at: new Date().toISOString() });
 
-  const summary = ['jev', ...LLMS, 'rules'].map((engine) => {
-    const rows = outcomes.filter((o) => o.engine === engine);
+  const summarize = (track: Track) => ['jev', ...LLMS, 'rules'].map((engine) => {
+    const rows = outcomes.filter((o) => o.track === track && o.engine === engine);
     const ok = rows.filter((o) => o.ok);
     const ms = ok.map((o) => o.ms!).sort((a, b) => a - b);
     // consistency: share of snapshots where all trials chose the same action
@@ -220,36 +236,42 @@ async function main() {
       meanCostPerDecisionUsd: costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null,
       costSource: ok[0]?.costSource ?? null,
       meanInputTokens: ok.some((o) => o.inputTokens) ? Math.round(ok.reduce((a, o) => a + (o.inputTokens ?? 0), 0) / ok.length) : null,
-      probabilitySource: ok[0]?.probabilitySource ?? null,
+      probabilitySource: ok[0]?.probabilitySource ?? (engine === 'jev' ? 'model-native' : 'none (action only)'),
       errors,
     };
   });
 
   // agreement with JEV's modal choice per snapshot (descriptive only — not a quality score)
-  const modal = (engine: string, s: number) => {
-    const c = outcomes.filter((o) => o.engine === engine && o.snapshot === s && o.ok).map((o) => o.choice!);
+  const modal = (track: Track, engine: string, s: number) => {
+    const c = outcomes.filter((o) => o.track === track && o.engine === engine && o.snapshot === s && o.ok).map((o) => o.choice!);
     const counts = new Map<string, number>();
     for (const x of c) counts.set(x, (counts.get(x) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   };
-  const agreement: Record<string, number> = {};
-  for (const e of [...LLMS, 'rules']) {
-    let same = 0, n = 0;
-    for (let s = 0; s < snapshots.length; s++) { const a = modal('jev', s), b = modal(e, s); if (a && b) { n++; if (a === b) same++; } }
-    agreement[e] = n ? same / n : 0;
-  }
+  const agreementFor = (track: Track) => {
+    const agreement: Record<string, number> = {};
+    for (const e of [...LLMS, 'rules']) {
+      let same = 0, n = 0;
+      for (let s = 0; s < snapshots.length; s++) { const a = modal(track, 'jev', s), b = modal(track, e, s); if (a && b) { n++; if (a === b) same++; } }
+      agreement[e] = n ? same / n : 0;
+    }
+    return agreement;
+  };
+  const tracks = Object.fromEntries(TRACKS.map((t) => [t, { description: TRACK_INFO[t], summary: summarize(t), agreementWithJevModalChoice: agreementFor(t) }]));
 
   const result = {
-    format: 'jev-city-benchmark-v1',
+    format: 'jev-city-benchmark-v2',
     startedAt,
     finishedAt: new Date().toISOString(),
     environment: { host: 'developer laptop (macOS), residential network', node: process.version, concurrency: CONCURRENCY, simVersion: SIM_VERSION },
     method: {
       snapshots: snapshots.length, trialsPerSnapshot: TRIALS,
-      order: 'all (engine, snapshot, trial) tasks shuffled with a fixed seed, then run with bounded concurrency',
+      order: 'all (track, engine, snapshot, trial) tasks shuffled together with a fixed seed, then run with bounded concurrency',
       sameInputs: 'every engine receives the identical citizen state and the identical eligible-action set',
       jev: `POST api.typesafe.ai/v1/systemone, model ${PINNED_MODEL}, one Choice question over the eligible actions (same task as the LLMs)`,
-      llm: 'OpenRouter chat completions, strict JSON Schema (enum of eligible actions + probability per action), temperature 0.2, require_parameters, no provider fallbacks',
+      llm: 'OpenRouter chat completions, strict JSON Schema (Track A: action enum only; Track B: action enum + probability per action), temperature 0.2, require_parameters, no provider fallbacks',
+      rules: 'deterministic hand-written heuristic with a fixed seed per snapshot (the city itself uses seeded jitter for variety)',
+      scope: 'Choice-only requests measured on fixed city snapshots, not full four-question JEV City transactions. Results depend on model, provider routing and benchmark environment.',
       caveats: [
         'LLM probabilities are model-reported estimates, not calibrated probabilities; JEV probabilities are native model output.',
         'Schema-valid is not the same as correct. Decision quality requires blind rating and is not yet evaluated.',
@@ -258,14 +280,17 @@ async function main() {
         'Latency depends on network, region and provider load at the time of the run.',
       ],
     },
-    summary,
-    agreementWithJevModalChoice: agreement,
+    tracks,
     snapshots,
     outcomes,
   };
   mkdirSync('public/benchmark', { recursive: true });
   writeFileSync('public/benchmark/results.json', JSON.stringify(result));
-  console.log(JSON.stringify({ summary, agreementWithJevModalChoice: agreement }, null, 2));
+  for (const t of TRACKS) {
+    console.log(`Track ${t}`);
+    for (const r of tracks[t].summary) console.log(`  ${r.engine.padEnd(24)} valid ${r.valid}/${r.attempted}  p50 ${r.latencyMs.p50}  p95 ${r.latencyMs.p95}  consistency ${r.consistency?.toFixed(2)}  cost ${r.meanCostPerDecisionUsd}  errors ${JSON.stringify(r.errors)}`);
+    console.log('  agreement', JSON.stringify(tracks[t].agreementWithJevModalChoice));
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

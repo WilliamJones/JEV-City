@@ -58,6 +58,8 @@ export class Controller {
   night = false;
   selectedId: string | null = null;
   replay: ReplayLog | null = null;
+  /** True while a recording is being fetched; the sim does not advance (no silent fallbacks). */
+  loading = false;
   replayIndex = new Map<string, DecisionResultV1>();
   liveSamples: LiveSample[] = [];
   liveFailures: Record<string, number> = {};
@@ -111,7 +113,12 @@ export class Controller {
     this.sim = new Simulation(scenario, DEFAULT_SEED);
     this.night = this.sim.scenario === 'blackout';
     this.selectedId = null;
-    if (mode === 'replay') await this.loadReplay(scenario);
+    if (mode === 'replay') {
+      this.loading = true;
+      this.notify(true);
+      await this.loadReplay(scenario);
+      this.loading = false;
+    }
     if (mode === 'replay' && !this.replay) {
       this.mode = 'rules';
       this.fallbackReason = 'No recording available for this scenario';
@@ -125,7 +132,7 @@ export class Controller {
       this.raf = requestAnimationFrame(loop);
       const dt = Math.min(250, now - this.last);
       this.last = now;
-      if (this.paused) return;
+      if (this.paused || this.loading) return;
       this.acc += dt * this.speed;
       let steps = 0;
       while (this.acc >= TICK_MS && steps < 40) {

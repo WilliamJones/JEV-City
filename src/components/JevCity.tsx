@@ -79,6 +79,11 @@ export default function JevCity() {
           <div ref={canvasRef} className="absolute inset-0" aria-label="Isometric city simulation. Use the citizen list in the side panel for keyboard access." role="img" />
           <div className="vignette pointer-events-none absolute inset-0" aria-hidden />
           {ctrl.currentBeat && <TourCaption ctrl={ctrl} />}
+          {ctrl.loading && (
+            <div className="panel absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-3 text-sm font-medium" role="status">
+              Loading recorded JEV decisions…
+            </div>
+          )}
           {ctrl.fallbackReason && (
             <div className="panel absolute left-3 top-3 max-w-md px-3 py-2 text-xs font-medium" role="status">
               <span className="mr-1 font-bold" style={{ color: 'var(--coral)' }}>FALLBACK</span>
@@ -88,12 +93,16 @@ export default function JevCity() {
           <div className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] font-medium sm:block" style={{ color: 'var(--ink-soft)' }}>
             Click a citizen to inspect · drag to pan · scroll to zoom · space to pause · N for night
           </div>
-          <button
-            className="panel absolute bottom-3 right-3 px-3 py-1.5 text-xs font-semibold"
-            onClick={() => rendererRef.current?.resetCamera()}
-          >
-            Recenter
-          </button>
+          <div className="absolute bottom-3 right-3 flex gap-2">
+            {!ctrl.tour.active && (
+              <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={async () => { await ctrl.reset('meteor', 'replay'); ctrl.startTour(12 * 60 + 39); rendererRef.current?.resetCamera(); }}>
+                ▶ Replay intro
+              </button>
+            )}
+            <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={() => rendererRef.current?.resetCamera()}>
+              Recenter
+            </button>
+          </div>
         </div>
         <aside className="flex w-full flex-col gap-3 lg:min-h-0 lg:w-[400px] xl:w-[440px]">
           <div className="panel scroll-thin lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
