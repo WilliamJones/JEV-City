@@ -66,6 +66,7 @@ export class CityRenderer {
   private cue = new Set<string>();
   private lastFrame = performance.now();
   onSelect: (id: string | null) => void = () => {};
+  onUserCamera: () => void = () => {};
 
   async init(el: HTMLElement, ctrl: Controller) {
     await this.app.init({ resizeTo: el, antialias: true, backgroundAlpha: 0, resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true });
@@ -677,7 +678,7 @@ export class CityRenderer {
     stage.on('pointermove', (e) => {
       if (!drag) return;
       const dx = e.global.x - drag.x, dy = e.global.y - drag.y;
-      if (Math.hypot(dx, dy) > 4) { drag.moved = true; this.userMovedCamera = true; this.cam = null; }
+      if (Math.hypot(dx, dy) > 4 && !drag.moved) { drag.moved = true; this.userMovedCamera = true; this.cam = null; this.onUserCamera(); }
       if (drag.moved) this.pan = { x: drag.px + dx, y: drag.py + dy };
     });
     stage.on('pointerup', (e) => {
@@ -699,6 +700,7 @@ export class CityRenderer {
       ev.preventDefault();
       this.userMovedCamera = true;
       this.cam = null;
+      this.onUserCamera();
       const old = this.zoom;
       this.zoom = Math.max(0.7, Math.min(2.8, this.zoom * (ev.deltaY < 0 ? 1.1 : 0.9)));
       const rect = this.app.canvas.getBoundingClientRect();
@@ -706,6 +708,13 @@ export class CityRenderer {
       const k = this.zoom / old;
       this.pan = { x: mx - (mx - this.pan.x) * k, y: my - (my - this.pan.y) * k };
     }, { passive: false });
+  }
+
+  /** Guided-tour framing: ease toward a citizen (no-op once the visitor has moved the camera). */
+  focusCitizen(c: Citizen | null) {
+    if (this.userMovedCamera) return;
+    if (!c) { this.moveCamera(1, { x: 0, y: 0 }, 1800); return; }
+    this.moveCamera(1.55, this.panFor(c.pos.x, c.pos.y, 1.55), 1600);
   }
 
   resetCamera() {

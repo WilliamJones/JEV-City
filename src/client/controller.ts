@@ -19,6 +19,32 @@ export type LiveSample = { upstreamMs: number; browserMs: number; inputTokens: n
 
 export const DEFAULT_SEED = 2401;
 
+export type TourBeat = { decisionId: string; citizenId: string; caption: string };
+
+/**
+ * Pick a handful of genuinely interesting recorded decisions for the guided opener:
+ * split distributions (not near-certain), different actions, different citizens, after the incident.
+ */
+export function pickTourBeats(log: ReplayLog, afterMinute: number, count = 4): TourBeat[] {
+  const used = new Set<string>(), actions = new Set<string>();
+  const out: TourBeat[] = [];
+  const candidates = log.decisions
+    .filter((d) => d.answers && d.simulatedAtMinute >= afterMinute && d.simulatedAtMinute <= afterMinute + 40)
+    .map((d) => ({ d, top: Math.max(...Object.values(d.answers!.next_action.probabilities)) }))
+    .filter((x) => x.top >= 0.45 && x.top <= 0.85)
+    .sort((a, b) => a.d.simulatedAtMinute - b.d.simulatedAtMinute || a.d.id.localeCompare(b.d.id));
+  let lastMinute = -Infinity;
+  for (const { d } of candidates) {
+    if (used.has(d.citizenId) || actions.has(d.enactedChoice) || d.simulatedAtMinute < lastMinute + 6) continue;
+    lastMinute = d.simulatedAtMinute;
+    used.add(d.citizenId);
+    actions.add(d.enactedChoice);
+    out.push({ decisionId: d.id, citizenId: d.citizenId, caption: '' });
+    if (out.length === count) break;
+  }
+  return out;
+}
+
 export function percentile(sorted: number[], p: number) {
   if (!sorted.length) return null;
   return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
@@ -37,6 +63,8 @@ export class Controller {
   liveFailures: Record<string, number> = {};
   fallbackReason: string | null = null;
   remainingToday: number | null = null;
+  tour: { beats: TourBeat[]; index: number; active: boolean; endsAt: number | null } = { beats: [], index: 0, active: false, endsAt: null };
+  onTourBeat: (citizenId: string | null) => void = () => {};
   /** Bumped whenever UI-visible state changes. */
   version = 0;
   private listeners = new Set<() => void>();
@@ -107,6 +135,7 @@ export class Controller {
         steps++;
       }
       this.dispatch();
+      this.advanceTour();
       this.notify();
     };
     this.raf = requestAnimationFrame(loop);
@@ -192,6 +221,39 @@ export class Controller {
     } catch {
       return 'network_error';
     }
+  }
+
+  startTour(afterMinute: number) {
+    if (!this.replay) return;
+    const beats = pickTourBeats(this.replay, afterMinute);
+    this.tour = { beats, index: 0, active: beats.length > 0, endsAt: null };
+  }
+
+  stopTour() {
+    if (!this.tour.active) return;
+    this.tour = { ...this.tour, active: false };
+    this.onTourBeat(null);
+    this.notify(true);
+  }
+
+  private advanceTour() {
+    const t = this.tour;
+    if (!t.active) return;
+    if (t.endsAt !== null && this.sim.tick >= t.endsAt) { this.stopTour(); return; }
+    const beat = t.beats[t.index];
+    if (!beat) return;
+    const c = this.sim.citizens.find((x) => x.id === beat.citizenId);
+    if (c?.lastDecision?.id === beat.decisionId) {
+      this.selectedId = c.id;
+      t.index++;
+      if (t.index >= t.beats.length) t.endsAt = this.sim.tick + 120;
+      this.onTourBeat(c.id);
+      this.notify(true);
+    }
+  }
+
+  get currentBeat() {
+    return this.tour.active && this.tour.index > 0 ? this.tour.beats[this.tour.index - 1] : null;
   }
 
   get selected() {
