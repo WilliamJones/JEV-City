@@ -38,3 +38,6 @@ npm run dev
 
 ## Deploying to Vercel
 Set `TYPESAFE_API_KEY`, `JEV_LIVE_PASSCODE` and an Upstash Redis integration before setting `JEV_LIVE_ENABLED=true`. Without Redis, production live mode fails closed and the public site runs on recorded replays.
+
+## License
+MIT. See [LICENSE](LICENSE).
