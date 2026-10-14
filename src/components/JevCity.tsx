@@ -9,6 +9,11 @@ import { Overview } from './Overview';
 import { EventFeed } from './EventFeed';
 import { LiveDialog } from './LiveDialog';
 import { TourCaption } from './TourCaption';
+import { HelpPanel } from './help/HelpPanel';
+import { HelpContext } from './help/InfoTip';
+import { LegendOverlay } from './help/LegendOverlay';
+import { PhaseBanner } from './help/PhaseBanner';
+import { Welcome } from './help/Welcome';
 
 export default function JevCity() {
   const ctrlRef = useRef<Controller | null>(null);
@@ -19,6 +24,24 @@ export default function JevCity() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<CityRenderer | null>(null);
   const [liveOpen, setLiveOpen] = useState(false);
+  const [helpSection, setHelpSection] = useState<string | null>(null);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const pausedBeforeHelp = useRef<boolean | null>(null);
+  const openHelp = useCallback((section = 'overview') => {
+    if (pausedBeforeHelp.current === null) { pausedBeforeHelp.current = ctrl.paused; ctrl.paused = true; ctrl.notify(true); }
+    setHelpSection(section);
+  }, [ctrl]);
+  const closeHelp = useCallback(() => {
+    if (pausedBeforeHelp.current !== null) { ctrl.paused = pausedBeforeHelp.current; pausedBeforeHelp.current = null; ctrl.notify(true); }
+    setHelpSection(null);
+  }, [ctrl]);
+  const onWelcomeVisible = useCallback((v: boolean) => { ctrl.paused = v; ctrl.notify(true); }, [ctrl]);
+  const replayIntro = useCallback(async () => {
+    await ctrl.reset('meteor', 'replay');
+    ctrl.startTour(12 * 60 + 39);
+    ctrl.paused = false;
+    rendererRef.current?.resetCamera();
+  }, [ctrl]);
   const [liveInfo, setLiveInfo] = useState<{ liveEnabled: boolean; passcodeRequired: boolean } | null>(null);
 
   useEffect(() => {
@@ -63,42 +86,54 @@ export default function JevCity() {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       if (e.key === ' ') { e.preventDefault(); ctrl.paused = !ctrl.paused; ctrl.notify(true); }
       if (e.key === 'Escape') { ctrl.stopTour(); ctrl.selectedId = null; ctrl.notify(true); }
-      if (e.key === 'n') { ctrl.night = !ctrl.night; ctrl.notify(true); }
+      if (e.key === 'n' || e.key === 'N') { ctrl.night = !ctrl.night; ctrl.notify(true); }
+      if (e.key === '?') { e.preventDefault(); if (pausedBeforeHelp.current === null) openHelp('overview'); else closeHelp(); }
+      if (e.key === 'l' || e.key === 'L') setLegendOpen((v) => !v);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ctrl]);
+  }, [ctrl, openHelp, closeHelp]);
 
   const selected = ctrl.selected;
 
   return (
+    <HelpContext.Provider value={openHelp}>
     <div className="sky flex min-h-dvh flex-col gap-3 p-3 lg:h-dvh lg:p-4">
-      <TopBar ctrl={ctrl} onScenario={changeScenario} onMode={changeMode} liveAvailable={!!liveInfo?.liveEnabled} />
+      <TopBar ctrl={ctrl} onScenario={changeScenario} onMode={changeMode} liveAvailable={!!liveInfo?.liveEnabled} onHelp={() => openHelp('overview')} />
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         <div className="relative h-[62vh] min-h-[360px] overflow-hidden rounded-2xl lg:h-auto lg:flex-1">
           <div ref={canvasRef} className="absolute inset-0" aria-label="Isometric city simulation. Use the citizen list in the side panel for keyboard access." role="img" />
           <div className="vignette pointer-events-none absolute inset-0" aria-hidden />
           {ctrl.currentBeat && <TourCaption ctrl={ctrl} />}
+          {!ctrl.currentBeat && (
+            <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-2">
+              <PhaseBanner ctrl={ctrl} compact={!!ctrl.selectedId} />
+            </div>
+          )}
+          {legendOpen && <LegendOverlay onClose={() => setLegendOpen(false)} />}
           {ctrl.loading && (
             <div className="panel absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-3 text-sm font-medium" role="status">
               Loading recorded JEV decisions…
             </div>
           )}
           {ctrl.fallbackReason && (
-            <div className="panel absolute left-3 top-3 max-w-md px-3 py-2 text-xs font-medium" role="status">
+            <div className="panel absolute bottom-14 right-3 max-w-md px-3 py-2 text-xs font-medium" role="status">
               <span className="mr-1 font-bold" style={{ color: 'var(--coral)' }}>FALLBACK</span>
               {ctrl.fallbackReason}
             </div>
           )}
           <div className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] font-medium sm:block" style={{ color: 'var(--ink-soft)' }}>
-            Click a citizen to inspect · drag to pan · scroll to zoom · space to pause · N for night
+            Click a citizen to inspect · drag to pan · scroll to zoom · <b>?</b> help · <b>L</b> legend
           </div>
           <div className="absolute bottom-3 right-3 flex gap-2">
             {!ctrl.tour.active && (
-              <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={async () => { await ctrl.reset('meteor', 'replay'); ctrl.startTour(12 * 60 + 39); rendererRef.current?.resetCamera(); }}>
+              <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={replayIntro}>
                 ▶ Replay intro
               </button>
             )}
+            <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={() => setLegendOpen((v) => !v)} aria-pressed={legendOpen}>
+              Legend
+            </button>
             <button className="panel px-3 py-1.5 text-xs font-semibold" onClick={() => rendererRef.current?.resetCamera()}>
               Recenter
             </button>
@@ -126,6 +161,9 @@ export default function JevCity() {
           }}
         />
       )}
+      {helpSection && <HelpPanel section={helpSection} onSection={setHelpSection} onClose={closeHelp} />}
+      <Welcome onHelp={() => openHelp('overview')} onTour={replayIntro} onVisible={onWelcomeVisible} />
     </div>
+    </HelpContext.Provider>
   );
 }

@@ -4,6 +4,7 @@ import { ACTION_COLOR, ACTION_LABEL, hex, SHIRTS } from '@/client/palette';
 import type { Citizen } from '@/sim/citizens';
 import type { ActionId, DecisionResultV1, ScoreAnswer } from '@/sim/types';
 import { MODE_BADGE } from './TopBar';
+import { InfoTip } from './help/InfoTip';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const FALLBACK_REASON: Record<string, string> = {
@@ -23,11 +24,11 @@ const PROV: Record<DecisionResultV1['provenance'], { label: string; color: strin
   fallback: { label: 'FALLBACK', color: MODE_BADGE.fallback.color, note: 'JEV unavailable; rules fallback used. No model probabilities shown.' },
 };
 
-function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
+function Section({ title, aside, help, children }: { title: string; aside?: React.ReactNode; help?: string; children: React.ReactNode }) {
   return (
     <section className="px-5 py-3.5" style={{ borderTop: '1px solid var(--panel-border)' }}>
       <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>{title}</h3>
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>{title}{help && <InfoTip section={help} label={`About: ${title}`} />}</h3>
         {aside}
       </div>
       {children}
@@ -122,7 +123,8 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
         <>
           <Section
             title={`Decision #${d.id.split('#')[1]} · ${fmtMin(d.simulatedAtMinute)}`}
-            aside={<span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wider text-white" style={{ background: prov.color }}>{prov.label}</span>}
+            help="inspector"
+            aside={<span className="flex items-center"><span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wider text-white" style={{ background: prov.color }}>{prov.label}</span><InfoTip section="modes" label="What this label means" /></span>}
           >
             {a ? (
               <>
@@ -145,13 +147,13 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
 
           {a && (
             <>
-              <Section title="Perceived risk · JEV score">
+              <Section title="Perceived risk · JEV score" help="inspector">
                 <ScoreDist s={a.perceived_risk} accent="var(--coral)" />
               </Section>
-              <Section title="Duty pressure · JEV score">
+              <Section title="Duty pressure · JEV score" help="inspector">
                 <ScoreDist s={a.duty_pressure} accent="var(--teal)" />
               </Section>
-              <Section title="Would interrupt routine · JEV noul">
+              <Section title="Would interrupt routine · JEV noul" help="glossary">
                 <div className="flex items-center gap-3">
                   <span className="font-[family-name:var(--font-mono)] text-2xl font-semibold tabular-nums">{pct(a.would_interrupt_routine.noul)}</span>
                   <div className="bar-track h-2.5 flex-1"><div className="bar-fill" style={{ width: pct(a.would_interrupt_routine.noul), background: 'var(--amber)' }} /></div>
@@ -163,7 +165,7 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
         </>
       )}
 
-      <Section title="What JEV saw">
+      <Section title="What JEV saw" help="inspector">
         <div className="space-y-1.5">
           <Meter label="Caution" value={c.traits.caution} color="#4f7cc9" />
           <Meter label="Altruism" value={c.traits.altruism} color="var(--coral)" />
@@ -189,7 +191,7 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
       </Section>
 
       {d && (
-        <Section title="Provenance">
+        <Section title="Provenance" help="performance">
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
             <dt style={{ color: 'var(--ink-faint)' }}>Source</dt><dd>{prov?.note}</dd>
             <dt style={{ color: 'var(--ink-faint)' }}>Model</dt><dd className="font-[family-name:var(--font-mono)]">{d.resolvedModel ?? '—'}</dd>

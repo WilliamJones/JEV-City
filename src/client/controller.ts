@@ -236,6 +236,7 @@ export class Controller {
     if (!this.replay) return;
     const beats = pickTourBeats(this.replay, afterMinute);
     this.tour = { beats, index: 0, active: beats.length > 0, endsAt: null };
+    this.notify(true);
   }
 
   stopTour() {

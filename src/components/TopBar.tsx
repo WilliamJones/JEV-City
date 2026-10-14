@@ -14,7 +14,7 @@ const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:$
 
 const SCENARIO_ICON: Record<ScenarioId, string> = { ordinary_morning: '☀︎', blackout: '⚡︎', meteor: '☄︎' };
 
-export function TopBar({ ctrl, onScenario, onMode, liveAvailable }: { ctrl: Controller; onScenario: (s: ScenarioId) => void; onMode: (m: Mode) => void; liveAvailable: boolean }) {
+export function TopBar({ ctrl, onScenario, onMode, liveAvailable, onHelp }: { ctrl: Controller; onScenario: (s: ScenarioId) => void; onMode: (m: Mode) => void; liveAvailable: boolean; onHelp: () => void }) {
   const badge = MODE_BADGE[ctrl.mode];
   return (
     <header className="panel flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
@@ -82,6 +82,9 @@ export function TopBar({ ctrl, onScenario, onMode, liveAvailable }: { ctrl: Cont
             Live JEV
           </button>
         </div>
+        <button className="rounded-full px-3 py-1.5 text-xs font-bold text-white" style={{ background: 'var(--teal)' }} onClick={onHelp} aria-label="Open help (shortcut ?)" title="Help (?)">
+          ? Help
+        </button>
       </div>
     </header>
   );

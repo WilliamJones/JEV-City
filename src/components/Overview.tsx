@@ -3,6 +3,7 @@ import type { Controller } from '@/client/controller';
 import { ACTION_COLOR, ACTION_LABEL, hex } from '@/client/palette';
 import { ACTION_IDS } from '@/sim/types';
 import { SCENARIO_META } from '@/sim/world';
+import { InfoTip } from './help/InfoTip';
 
 const ms = (v: number | null) => (v === null ? 'Not measured' : `${v} ms`);
 
@@ -26,7 +27,7 @@ export function Overview({ ctrl }: { ctrl: Controller }) {
       </div>
 
       <section className="px-5 py-3" style={{ borderTop: '1px solid var(--panel-border)' }}>
-        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>What the city is doing</h3>
+        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>What the city is doing<InfoTip section="legend" label="Action colors" /></h3>
         <div className="mb-2 flex h-3 overflow-hidden rounded-full" style={{ background: 'var(--track)' }} aria-hidden>
           {ACTION_IDS.map((a) => counts[a] > 0 && <div key={a} style={{ width: `${(counts[a] / total) * 100}%`, background: hex(ACTION_COLOR[a]) }} className="transition-all duration-500" />)}
           {needy > 0 && <div style={{ width: `${(needy / total) * 100}%`, background: 'repeating-linear-gradient(45deg,#f17961,#f17961 3px,#fff 3px,#fff 5px)' }} />}
@@ -41,7 +42,7 @@ export function Overview({ ctrl }: { ctrl: Controller }) {
       </section>
 
       <section className="px-5 py-3" style={{ borderTop: '1px solid var(--panel-border)' }}>
-        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>Measured performance</h3>
+        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>Measured performance<InfoTip section="performance" label="What these numbers mean" /></h3>
         {ctrl.mode === 'live' || live.n > 0 ? (
           <div className="grid grid-cols-3 gap-2 text-center">
             <Stat label="Upstream p50" value={ms(live.upstreamP50)} />
@@ -68,7 +69,7 @@ export function Overview({ ctrl }: { ctrl: Controller }) {
       </section>
 
       <section className="px-5 py-3" style={{ borderTop: '1px solid var(--panel-border)' }}>
-        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>Citizens</h3>
+        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--ink-faint)' }}>Citizens<InfoTip section="inspector" label="How to inspect a citizen" /></h3>
         <ul className="grid grid-cols-1 gap-0.5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
           {sim.citizens.map((c) => (
             <li key={c.id}>
