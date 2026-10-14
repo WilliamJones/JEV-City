@@ -221,7 +221,7 @@ export const HELP: HelpSection[] = [
         <Row k="p50 / p95">The median and the 95th-percentile time across all decisions (95% were faster than the p95). <i>n</i> is how many decisions were measured.</Row>
         <Row k="Tokens">How much text JEV read (input) and wrote (output), as reported by JEV.</Row>
         <Row k="Est. API cost">Tokens × TypeSafe’s published price ($0.042 per million input tokens; output is free). An estimate, not a bill — a single decision costs about four thousandths of a cent.</Row>
-        <P>Schema-valid answers aren’t automatically <i>good</i> answers. Whether JEV decides <b>well</b> is a separate question we’re measuring with blind human ratings (pending).</P>
+        <P>Schema-valid answers aren’t automatically <i>good</i> answers. Whether JEV decides <b>well</b> is a separate question this demo does not measure — judge for yourself by opening the inspector.</P>
       </>
     ),
   },

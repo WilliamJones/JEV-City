@@ -169,7 +169,7 @@ export default async function BenchmarkPage({ searchParams }: { searchParams: Pr
               <h3 className="mb-1 font-semibold" style={{ color: 'var(--ink)' }}>Caveats</h3>
               <ul className="list-disc space-y-1 pl-4">
                 {data.method.caveats.map((c) => <li key={c}>{c}</li>)}
-                <li><b style={{ color: 'var(--ink)' }}>Decision quality: not yet evaluated.</b> A blind human rating against a behavioral rubric is pending; until then we make no claim about which engine decides “better”.</li>
+                <li><b style={{ color: 'var(--ink)' }}>Decision quality: not evaluated.</b> This benchmark measures validity, speed, cost and repeatability only. We make no claim about which engine decides “better”.</li>
               </ul>
             </div>
           </div>

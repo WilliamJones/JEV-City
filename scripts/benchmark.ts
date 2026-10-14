@@ -274,7 +274,7 @@ async function main() {
       scope: 'Choice-only requests measured on fixed city snapshots, not full four-question JEV City transactions. Results depend on model, provider routing and benchmark environment.',
       caveats: [
         'LLM probabilities are model-reported estimates, not calibrated probabilities; JEV probabilities are native model output.',
-        'Schema-valid is not the same as correct. Decision quality requires blind rating and is not yet evaluated.',
+        'Schema-valid is not the same as correct. Decision quality is not evaluated by this benchmark.',
         'Rules latency is an in-process function call and is not comparable to network round-trips.',
         'Both engines get the same state JSON and the same action descriptions; the LLM additionally receives a natural-language instruction wrapper.',
         'Latency depends on network, region and provider load at the time of the run.',

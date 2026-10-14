@@ -1,5 +1,7 @@
 # Blind quality evaluation — spec v1.0 (ChatGPT, approved 2026-10-14)
 
+> **Status: DISCARDED (2026-10-14, product owner decision).** No human-rater study will be run. The app and benchmark make no decision-quality claims. Kept for reference only.
+
 > **v6 update (2026-10-14, from the decision-expansion review):** the evaluation now targets sim v6 / `quality-rubric-v2`: **360 fresh snapshots (60 × 6 scenarios)**, or a clearly labeled pilot of 30 per scenario. Raters see only what the citizen could know (e.g. a housemate's *last known* place, never their true location). Deliberately include snapshots where several actions are equally defensible and some where an action is clearly inappropriate; stratify by phase and action-set size; avoid adjacent near-duplicate ticks. v5 results are archived and not compared directly with v6. Auxiliary scores (perceived risk, duty pressure) are not rated with the action rubric.
 
 **Goal:** measure whether each engine's chosen action is *appropriate*, independently of speed/cost, without raters knowing which engine chose what.
