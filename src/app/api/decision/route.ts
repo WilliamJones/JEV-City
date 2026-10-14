@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { timingSafeEqual } from 'node:crypto';
 import { getBudget } from '@/jev/budget';
 import { callJev, estimateCostUsd } from '@/jev/client';
 import { CitizenDecisionInputSchema, PINNED_MODEL } from '@/jev/contract';
+import { SESSION_COOKIE, verifySession } from '@/jev/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,14 +12,7 @@ const MAX_BODY = 4096;
 function liveConfig() {
   const enabled = process.env.JEV_LIVE_ENABLED === 'true' && !!process.env.TYPESAFE_API_KEY;
   const passcode = process.env.JEV_LIVE_PASSCODE ?? '';
-  return { enabled, passcodeRequired: passcode.length > 0 || process.env.NODE_ENV === 'production', passcode };
-}
-
-function passcodeOk(given: string | null, expected: string) {
-  if (!expected) return process.env.NODE_ENV !== 'production';
-  if (!given) return false;
-  const a = Buffer.from(given), b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  return { enabled, passcodeRequired: passcode.length > 0 || process.env.NODE_ENV === 'production' };
 }
 
 const err = (status: number, errorClass: string) => NextResponse.json({ ok: false, errorClass }, { status });
@@ -38,7 +31,8 @@ export async function POST(req: NextRequest) {
   const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
   if (!origin || !host || new URL(origin).host !== host) return err(403, 'bad_origin');
 
-  if (!passcodeOk(req.headers.get('x-live-passcode'), cfg.passcode)) return err(401, 'passcode_required');
+  const session = verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+  if (!session) return err(401, 'session_required');
 
   const text = await req.text();
   if (text.length > MAX_BODY) return err(413, 'body_too_large');
@@ -58,7 +52,7 @@ export async function POST(req: NextRequest) {
     model: PINNED_MODEL,
     timeoutMs: 5000,
     onAttempt: async () => {
-      const b = await budget.reserve(ip);
+      const b = await budget.reserve(ip, session.sid);
       remainingToday = b.remainingToday;
       budgetReason = b.reason;
       return b.ok;

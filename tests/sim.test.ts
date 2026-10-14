@@ -26,19 +26,54 @@ describe('F01 seeding and determinism', () => {
     expect(snapshot(run(sc, 900, rules))).toBe(snapshot(run(sc, 900, rules)));
   });
 
-  it.each(SCENARIOS)('%s: committed recording replays with no missing decisions', (sc) => {
-    const log = JSON.parse(readFileSync(`public/replays/${sc}.json`, 'utf8')) as { decisions: DecisionResultV1[]; ticks: number; simVersion: number };
+  it.each(SCENARIOS)('%s: recording reproduces the live run exactly (order + state hashes)', (sc) => {
+    const log = JSON.parse(readFileSync(`public/replays/${sc}.json`, 'utf8')) as {
+      decisions: DecisionResultV1[]; ticks: number; simVersion: number; checkpoints: Record<string, string>; appliedOrder: string[];
+    };
     expect(log.simVersion, 'recording is stale — run `npm run record`').toBe(SIM_VERSION);
+    expect(Object.keys(log.checkpoints).length).toBeGreaterThanOrEqual(7);
     const idx = new Map(log.decisions.map((d) => [d.id, d]));
     let missing = 0;
-    run(sc, log.ticks, (s) => {
-      for (const r of s.outbox.splice(0)) {
+    const hashes: Record<string, string> = {};
+    const sim = new Simulation(sc, 2401);
+    while (sim.tick < log.ticks) {
+      for (const r of sim.outbox.splice(0)) {
         const d = idx.get(r.key);
         if (!d) missing++;
-        s.provide(r.key, d ? asReplayed(d) : rulesDecision(r, 'fallback'));
+        sim.provide(r.key, d ? asReplayed(d) : rulesDecision(r, 'fallback'));
       }
-    });
+      expect(sim.step()).toBe(true);
+      if (sim.tick % 300 === 0) hashes[sim.tick] = sim.stateHash();
+    }
     expect(missing).toBe(0);
+    expect(sim.appliedKeys).toEqual(log.appliedOrder);
+    expect(hashes).toEqual(log.checkpoints);
+  });
+
+  it('late, duplicate and foreign responses cannot mutate the world', () => {
+    const sim = new Simulation('blackout', 2401);
+    while (!sim.outbox.length) sim.step();
+    const [req] = sim.outbox.splice(0);
+    const first = rulesDecision(req);
+    expect(sim.provide(req.key, first)).toBe(true);
+    expect(sim.provide(req.key, { ...first, enactedChoice: 'go_home' })).toBe(false); // duplicate
+    expect(sim.provide('citizen-99#1', { ...first, id: 'citizen-99#1' })).toBe(false); // unknown
+    expect(sim.provide(req.key, { ...first, id: 'citizen-01#7' })).toBe(false); // mismatched id
+    while (sim.citizens.find((c) => c.id === req.citizenId)!.pending) sim.step();
+    expect(sim.provide(req.key, first)).toBe(false); // late, already applied
+    expect(sim.citizens.find((c) => c.id === req.citizenId)!.lastDecision!.enactedChoice).toBe(first.enactedChoice);
+  });
+
+  it('stalls instead of diverging when a due decision has not arrived', () => {
+    const sim = new Simulation('ordinary_morning', 2401);
+    while (!sim.outbox.length) sim.step();
+    const [req] = sim.outbox.splice(0);
+    for (let i = 0; i < 10; i++) sim.step();
+    const t = sim.tick;
+    expect(sim.step()).toBe(false);
+    expect(sim.tick).toBe(t);
+    sim.provide(req.key, rulesDecision(req));
+    expect(sim.step()).toBe(true);
   });
 });
 
@@ -73,6 +108,20 @@ describe('F02 physically plausible actions', () => {
     }
     const calm = run('ordinary_morning', 200, rules);
     for (const c of calm.citizens) expect(calm.getEligibleActions(c)).not.toContain('report_for_duty');
+  });
+
+  it('regression: a route planned through the impact zone is re-planned before entering it', () => {
+    const sim = new Simulation('meteor', 2401);
+    while (sim.tick < 85) { for (const r of sim.outbox.splice(0)) sim.provide(r.key, rulesDecision(r)); sim.step(); }
+    const c = sim.citizens.find((x) => !x.inside && !x.pending)!;
+    c.tile = { x: 6, y: 11 }; c.pos = { x: 6, y: 11 };
+    c.path = [7, 8, 9, 10, 11, 12].map((x) => ({ x, y: 11 }));
+    while (sim.tick < 400) {
+      for (const r of sim.outbox.splice(0)) sim.provide(r.key, rulesDecision(r));
+      sim.step();
+      expect(sim.walkable[Math.round(c.pos.y)][Math.round(c.pos.x)] || !!c.inside).toBe(true);
+      for (const t of c.path) expect(sim.walkable[t.y][t.x]).toBe(true);
+    }
   });
 
   it('meteor blocks tiles inside the hazard radius', () => {

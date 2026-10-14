@@ -11,7 +11,7 @@ import type {
 } from './types';
 
 /** Bump whenever simulation behavior changes; recordings must be re-captured to match. */
-export const SIM_VERSION = 3;
+export const SIM_VERSION = 4;
 export const TICK_MS = 100;
 export const MINUTES_PER_TICK = 0.1;
 /** Fixed logical "think time": a decision requested at tick t is applied at t + THINK_TICKS. */
@@ -65,6 +65,8 @@ export class Simulation {
   private provided = new Map<string, DecisionResultV1>();
   private rng: Rng;
   stalled = false;
+  /** Decision keys in the exact order they were applied to the world. */
+  appliedKeys: string[] = [];
 
   constructor(scenario: ScenarioId, seed: number) {
     this.scenario = scenario;
@@ -108,9 +110,27 @@ export class Simulation {
     if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
   }
 
-  /** Providers call this with a finished decision for a request key. */
-  provide(key: string, result: DecisionResultV1) {
-    if (this.pending.has(key)) this.provided.set(key, result);
+  /**
+   * Providers call this with a finished decision for a request key. Unknown, already-applied
+   * (late) and duplicate responses are ignored, so they can never mutate a different tick.
+   */
+  provide(key: string, result: DecisionResultV1): boolean {
+    if (!this.pending.has(key) || this.provided.has(key) || result.id !== key) return false;
+    this.provided.set(key, result);
+    return true;
+  }
+
+  /** FNV-1a hash of all behavior-relevant world state, for replay verification. */
+  stateHash(): string {
+    let h = 0x811c9dc5;
+    const mixIn = (s: string) => {
+      for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+    };
+    mixIn(`${this.tick}|${this.blackout}|${this.hazard ? 1 : 0}|`);
+    for (const c of this.citizens)
+      mixIn(`${c.id}:${c.pos.x.toFixed(4)},${c.pos.y.toFixed(4)}:${c.action}:${c.plan}:${c.needsHelp}:${c.inside}:${c.helpingId}:${c.cooldown}:${c.decisionSeq}:${c.needs.fatigue.toFixed(4)}:${c.needs.supplies.toFixed(4)}|`);
+    for (const row of this.walkable) mixIn(row.map((w) => (w ? 1 : 0)).join(''));
+    return (h >>> 0).toString(16).padStart(8, '0');
   }
 
   /** Advance one logical tick. Returns false (stalls) if a due decision has not arrived yet. */
@@ -174,6 +194,7 @@ export class Simulation {
         for (const c of this.citizens) {
           if (!c.path.some((p) => !this.walkable[p.y][p.x])) continue;
           const dest = c.path[c.path.length - 1];
+          c.pos = { x: c.tile.x, y: c.tile.y }; // step back from the edge of the closure
           c.path = findPath(this.walkable, c.tile, dest) ?? [];
         }
         this.strand(byDist.slice(0, 3).map((c) => c.id), 'is shaken and stranded near the crater');
@@ -328,6 +349,7 @@ export class Simulation {
   private applyDecision(req: DecisionRequest, res: DecisionResultV1) {
     const c = this.citizens.find((x) => x.id === req.citizenId)!;
     c.pending = false;
+    this.appliedKeys.push(req.key);
     if (c.needsHelp) {
       c.lastDecision = { ...res, enactedChoice: 'wait', samplingPolicy: 'deterministic-override', overrideReason: 'citizen is stranded and waiting for help' };
       return;

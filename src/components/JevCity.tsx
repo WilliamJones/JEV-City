@@ -98,12 +98,14 @@ export default function JevCity() {
         <LiveDialog
           passcodeRequired={liveInfo?.passcodeRequired ?? true}
           onCancel={() => setLiveOpen(false)}
-          onStart={(code) => {
-            ctrl.passcode = code;
+          onStart={async (code) => {
+            const error = await ctrl.openLiveSession(code);
+            if (error) return error;
             ctrl.liveSamples = [];
             ctrl.liveFailures = {};
             setLiveOpen(false);
             void ctrl.reset(ctrl.scenario, 'live');
+            return null;
           }}
         />
       )}

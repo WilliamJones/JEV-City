@@ -27,6 +27,7 @@ const OUT = arg('out', '');
 const SEED = Number(arg('seed', '2401'));
 const ONLY = arg('scenario', '');
 const PHASE0 = process.argv.includes('--phase0');
+const CHECKPOINT_EVERY = 300;
 
 type Sample = { scenario: ScenarioId; ok: boolean; ms: number | null; errorClass?: string; inTok?: number; outTok?: number; model?: string; top?: string; maxP?: number };
 
@@ -35,6 +36,7 @@ async function runScenario(scenario: ScenarioId) {
   const decisions: DecisionResultV1[] = [];
   const samples: Sample[] = [];
   const inflight = new Map<string, Promise<void>>();
+  const checkpoints: Record<number, string> = {};
   const t0 = Date.now();
   while (sim.tick < TICKS) {
     for (const req of sim.outbox.splice(0)) {
@@ -55,10 +57,11 @@ async function runScenario(scenario: ScenarioId) {
       inflight.set(req.key, p);
     }
     if (!sim.step()) await Promise.race(inflight.values());
+    else if (sim.tick % CHECKPOINT_EVERY === 0) checkpoints[sim.tick] = sim.stateHash();
   }
   await Promise.all(inflight.values());
   console.log(`${scenario}: ${sim.tick} ticks, ${decisions.length} decisions in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { sim, decisions, samples };
+  return { sim, decisions, samples, checkpoints };
 }
 
 const pct = (s: number[], p: number) => s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
@@ -67,7 +70,7 @@ async function main() {
   const scenarios = ONLY ? [ONLY as ScenarioId] : [...SCENARIOS];
   const all: Sample[] = [];
   for (const sc of scenarios) {
-    const { decisions, samples } = await runScenario(sc);
+    const { sim, decisions, samples, checkpoints } = await runScenario(sc);
     all.push(...samples);
     if (OUT) {
       mkdirSync(OUT, { recursive: true });
@@ -80,6 +83,9 @@ async function main() {
         ticks: TICKS,
         recordedAt: new Date().toISOString(),
         requestedModel: PINNED_MODEL,
+        /** World-state hashes captured during the live run; replays must reproduce them exactly. */
+        checkpoints,
+        appliedOrder: sim.appliedKeys,
         decisions: decisions.sort((a, b) => a.id.localeCompare(b.id)),
       };
       writeFileSync(`${OUT}/${sc}.json`, JSON.stringify(log));

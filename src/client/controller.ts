@@ -36,7 +36,6 @@ export class Controller {
   liveSamples: LiveSample[] = [];
   liveFailures: Record<string, number> = {};
   fallbackReason: string | null = null;
-  passcode = '';
   remainingToday: number | null = null;
   /** Bumped whenever UI-visible state changes. */
   version = 0;
@@ -135,7 +134,7 @@ export class Controller {
     try {
       const res = await fetch('/api/decision', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-live-passcode': this.passcode },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req.input),
       });
       const browserMs = Math.round(performance.now() - t0);
@@ -173,7 +172,7 @@ export class Controller {
       const errorClass = (e as { errorClass?: string }).errorClass ?? 'network_error';
       this.liveFailures[errorClass] = (this.liveFailures[errorClass] ?? 0) + 1;
       this.sim.provide(req.key, rulesDecision(req, 'fallback', errorClass));
-      const fatal = ['live_disabled', 'passcode_required', 'global_daily_cap', 'ip_daily_cap', 'budget_store_unavailable', 'bad_origin'];
+      const fatal = ['live_disabled', 'session_required', 'session_cap', 'global_daily_cap', 'ip_daily_cap', 'budget_store_unavailable', 'bad_origin'];
       if (fatal.includes(errorClass) && this.mode === 'live') {
         this.mode = 'fallback';
         this.fallbackReason = `Live JEV stopped: ${errorClass.replaceAll('_', ' ')}. Showing rules fallback.`;
@@ -181,6 +180,17 @@ export class Controller {
       }
     } finally {
       this.inflight--;
+    }
+  }
+
+  /** Exchange the passcode for an HttpOnly live-session cookie. */
+  async openLiveSession(passcode: string): Promise<string | null> {
+    try {
+      const res = await fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passcode }) });
+      const body = await res.json();
+      return body.ok ? null : (body.errorClass as string);
+    } catch {
+      return 'network_error';
     }
   }
 
