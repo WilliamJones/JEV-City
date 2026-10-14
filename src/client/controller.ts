@@ -1,7 +1,7 @@
 'use client';
 import { asReplayed, rulesDecision } from '@/sim/decisions';
 import type { DecisionResultV1, JevAnswers, ScenarioId } from '@/sim/types';
-import { Simulation, TICK_MS, type DecisionRequest } from '@/sim/world';
+import { SIM_VERSION, Simulation, TICK_MS, type DecisionRequest } from '@/sim/world';
 
 export type Mode = 'replay' | 'live' | 'rules' | 'fallback';
 
@@ -95,9 +95,11 @@ export class Controller {
 
   async loadReplay(scenario: ScenarioId) {
     try {
-      const res = await fetch(`/replays/${scenario}.json`, { cache: 'force-cache' });
+      // Versioned URL: a new sim version never pairs with a stale cached recording.
+      const res = await fetch(`/replays/${scenario}.json?v=${SIM_VERSION}`);
       if (!res.ok) throw new Error(String(res.status));
-      const log = (await res.json()) as ReplayLog;
+      const log = (await res.json()) as ReplayLog & { simVersion?: number };
+      if (log.simVersion !== SIM_VERSION) throw new Error('stale recording');
       this.replay = log;
       this.replayIndex = new Map(log.decisions.map((d) => [d.id, d]));
     } catch {

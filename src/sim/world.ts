@@ -11,7 +11,7 @@ import type {
 } from './types';
 
 /** Bump whenever simulation behavior changes; recordings must be re-captured to match. */
-export const SIM_VERSION = 4;
+export const SIM_VERSION = 5;
 export const TICK_MS = 100;
 export const MINUTES_PER_TICK = 0.1;
 /** Fixed logical "think time": a decision requested at tick t is applied at t + THINK_TICKS. */
@@ -47,6 +47,9 @@ export const POWER_RESTORED_TICK = 1700;
 export const METEOR_WARN_TICK = 50;
 export const METEOR_IMPACT_TICK = 90;
 export const METEOR_CENTER = { x: 9, y: 11 };
+/** Cleanup arc: crews arrive, then the closure is lifted and the emergency ends. */
+export const METEOR_CREW_TICK = 700;
+export const METEOR_CLEARED_TICK = 1500;
 const METEOR_RADIUS = 2.3;
 
 export class Simulation {
@@ -58,6 +61,10 @@ export class Simulation {
   blackout = false;
   hazard: Hazard | null = null;
   meteorIncoming = false;
+  /** Cleanup crews are working the impact site. */
+  crewOnSite = false;
+  /** Tick the impact site was cleared and roads reopened (the repaired patch stays visible). */
+  clearedTick: number | null = null;
   walkable: boolean[][];
   /** Requests emitted and waiting for a provider. */
   outbox: DecisionRequest[] = [];
@@ -198,6 +205,26 @@ export class Simulation {
           c.path = findPath(this.walkable, c.tile, dest) ?? [];
         }
         this.strand(byDist.slice(0, 3).map((c) => c.id), 'is shaken and stranded near the crater');
+        this.interruptAll();
+      }
+      if (t === METEOR_CREW_TICK) {
+        this.crewOnSite = true;
+        this.log('effect', 'Cleanup crews and an excavator arrive at the crater.');
+      }
+      if (t === METEOR_CLEARED_TICK && this.hazard) {
+        this.crewOnSite = false;
+        this.hazard = null;
+        this.clearedTick = t;
+        this.walkable = buildBaseWalkable();
+        for (const c of this.citizens) {
+          if (!c.needsHelp) continue;
+          c.needsHelp = false;
+          c.actionLabel = 'Walking to the clinic';
+          c.cooldown = 120;
+          c.path = findPath(this.walkable, c.tile, buildingById('clinic').door) ?? [];
+          this.log('effect', `Crews help ${c.name.split(' ')[0]} out — they head to the clinic.`, c.id);
+        }
+        this.log('incident', 'Debris cleared — roads around the market reopen.');
         this.interruptAll();
       }
     }

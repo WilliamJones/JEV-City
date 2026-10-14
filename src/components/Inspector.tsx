@@ -6,6 +6,14 @@ import type { ActionId, DecisionResultV1, ScoreAnswer } from '@/sim/types';
 import { MODE_BADGE } from './TopBar';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+const FALLBACK_REASON: Record<string, string> = {
+  missing_recording: 'not in the recording',
+  timeout: 'live call timed out',
+  network_error: 'network error',
+  budget_exhausted: 'live budget used up',
+  global_daily_cap: 'daily live budget used up',
+  session_required: 'live session expired',
+};
 const fmtMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 const PROV: Record<DecisionResultV1['provenance'], { label: string; color: string; note: string }> = {
@@ -123,7 +131,7 @@ export function Inspector({ ctrl, citizen: c }: { ctrl: Controller; citizen: Cit
               </>
             ) : d.ruleWeights ? (
               <>
-                <p className="mb-2.5 text-xs" style={{ color: 'var(--ink-soft)' }}>{d.provenance === 'fallback' ? 'JEV unavailable — rules fallback weights' : 'Rules baseline weights'} (developer heuristic, <b>not</b> model probabilities).</p>
+                <p className="mb-2.5 text-xs" style={{ color: 'var(--ink-soft)' }}>{d.provenance === 'fallback' ? `No JEV answer for this decision (${FALLBACK_REASON[d.metrics.errorClass ?? ''] ?? d.metrics.errorClass ?? 'unknown reason'}) — rules fallback weights` : 'Rules baseline weights'} (developer heuristic, <b>not</b> model probabilities).</p>
                 <ChoiceBars probs={d.ruleWeights} top={null} enacted={d.enactedChoice} />
               </>
             ) : null}

@@ -3,7 +3,7 @@ import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pi
 import { BUILDINGS, isRoad, MAP_H, MAP_W, STREETLIGHTS, TREES, type Building } from '@/sim/map';
 import type { Citizen } from '@/sim/citizens';
 import type { ActionId } from '@/sim/types';
-import { BLACKOUT_TICK, METEOR_CENTER, METEOR_IMPACT_TICK, METEOR_WARN_TICK, POWER_RESTORED_TICK, type Simulation } from '@/sim/world';
+import { BLACKOUT_TICK, METEOR_CENTER, METEOR_CLEARED_TICK, METEOR_CREW_TICK, METEOR_IMPACT_TICK, METEOR_WARN_TICK, POWER_RESTORED_TICK, type Simulation } from '@/sim/world';
 import type { Controller } from './controller';
 import { drawActionIcon } from './icons';
 import { ease, glowTexture, iso, lerp, pts, up, type P } from './iso';
@@ -65,6 +65,10 @@ export class CityRenderer {
   private cam: { from: { zoom: number; pan: P }; to: { zoom: number; pan: P }; t0: number; dur: number } | null = null;
   private cue = new Set<string>();
   private lastFrame = performance.now();
+  private crewParts: Container[] = [];
+  private excavatorArm = new Graphics();
+  private workers: Graphics[] = [];
+  private repairDrawn = false;
   onSelect: (id: string | null) => void = () => {};
   onUserCamera: () => void = () => {};
 
@@ -560,6 +564,7 @@ export class CityRenderer {
     for (let i = 0; i < 70; i++) this.dust.push({ s: sprite(0xcdb79a, this.fx), vx: 0, vy: 0, life: 0 });
     for (let i = 0; i < 14; i++) this.embers.push({ s: sprite(0xff8a4c, this.lights), phase: i * 0.7 });
     for (let i = 0; i < 26; i++) this.sparks.push({ s: sprite(0x9fd8ff, this.lights), vx: 0, vy: 0, life: 0 });
+    this.buildCrew();
   }
 
   // ---------------------------------------------------------------- citizens
@@ -840,6 +845,10 @@ export class CityRenderer {
     for (const d of this.dust) { d.s.visible = false; d.life = 0; }
     for (const e of this.embers) e.s.visible = false;
     for (const s of this.sparks) { s.s.visible = false; s.life = 0; }
+    this.repairDrawn = false;
+    this.crater.scale.set(1);
+    this.crater.pivot.set(0, 0);
+    this.crater.position.set(0, 0);
     this.cue.clear();
     this.userMovedCamera = false;
     if (first) {
@@ -849,6 +858,85 @@ export class CityRenderer {
       this.applyCamera();
       setTimeout(() => this.moveCamera(1, { x: 0, y: 0 }, 3200), 500);
     }
+  }
+
+  /** Cleanup crew for the meteor site: an excavator and three workers in hi-vis. */
+  private buildCrew() {
+    const ex = new Graphics();
+    const box = (x0: number, x1: number, y0: number, y1: number, h0: number, h1: number, top: number) => {
+      const A = iso(x0, y1), B = iso(x1, y1), C = iso(x1, y0), D = iso(x0, y0);
+      ex.poly(pts(up(A, h0), up(B, h0), up(B, h1), up(A, h1))).fill(mix(top, 0x000000, 0.12));
+      ex.poly(pts(up(B, h0), up(C, h0), up(C, h1), up(B, h1))).fill(mix(top, 0x000000, 0.28));
+      ex.poly(pts(up(A, h1), up(B, h1), up(C, h1), up(D, h1))).fill(top);
+    };
+    ex.ellipse(0, 4, 30, 12).fill({ color: 0, alpha: 0.2 });
+    box(-0.45, 0.45, -0.3, 0.3, 0, 6, 0x3b3f45); // tracks
+    box(-0.32, 0.32, -0.26, 0.26, 6, 16, 0xf2b632); // body
+    box(-0.05, 0.28, -0.24, 0.1, 16, 28, 0xf2b632); // cab
+    const w = iso(0.28, -0.07);
+    ex.poly(pts(up(iso(0.28, 0.08), 18), up(iso(0.28, -0.22), 18), up(iso(0.28, -0.22), 26), up(iso(0.28, 0.08), 26))).fill(0x8fb3c9);
+    void w;
+    const exC = new Container();
+    exC.addChild(ex, this.excavatorArm);
+    const ep = iso(11.4, 12.9);
+    exC.position.set(ep.x, ep.y);
+    exC.zIndex = 11.4 + 12.9;
+    this.crewParts.push(exC);
+    this.objects.addChild(exC);
+    this.tintables.push(ex, this.excavatorArm);
+    for (const [x, y] of [[7.2, 12.9], [8.0, 9.2], [10.9, 9.9]]) {
+      const g = new Graphics();
+      g.ellipse(0, 0, 5, 2.5).fill({ color: 0, alpha: 0.22 });
+      g.roundRect(-3, -6, 2.4, 6, 1).fill(0x2f3a45).roundRect(0.6, -6, 2.4, 6, 1).fill(0x2f3a45);
+      g.roundRect(-4.3, -14.5, 8.6, 9.5, 3).fill(0xff8a1f);
+      g.rect(-4.3, -10.6, 8.6, 1.6).fill(0xf3f36a);
+      g.circle(0, -18.5, 4).fill(0xe8b894);
+      g.ellipse(0, -21, 4.8, 2.6).fill(0xffffff).rect(-5, -21, 10, 1.2).fill(0xe6e6e6);
+      g.moveTo(4, -12).lineTo(9, -2).stroke({ width: 1.5, color: 0x7a5a3c }); // shovel
+      g.ellipse(9.5, -1.5, 2.5, 1.2).fill(0x8d96a0);
+      const p = iso(x, y);
+      g.position.set(p.x, p.y);
+      g.zIndex = x + y;
+      this.people.push(g);
+      this.workers.push(g);
+      this.crewParts.push(g);
+      this.objects.addChild(g);
+    }
+    for (const c of this.crewParts) c.visible = false;
+  }
+
+  private updateCrew(sim: Simulation, t: number) {
+    const on = sim.crewOnSite;
+    for (const c of this.crewParts) c.visible = on;
+    if (!on) return;
+    const swing = this.reducedMotion ? 0 : Math.sin(t * 1.3);
+    const g = this.excavatorArm;
+    g.clear();
+    const base = { x: -6, y: -16 };
+    const elbow = { x: base.x - 22 - swing * 4, y: base.y - 16 + swing * 3 };
+    const tip = { x: elbow.x - 12 - swing * 6, y: elbow.y + 16 + swing * 6 };
+    g.moveTo(base.x, base.y).lineTo(elbow.x, elbow.y).stroke({ width: 4, color: 0xe0a21f, cap: 'round' });
+    g.moveTo(elbow.x, elbow.y).lineTo(tip.x, tip.y).stroke({ width: 3, color: 0xe0a21f, cap: 'round' });
+    g.poly([tip.x - 5, tip.y - 2, tip.x + 3, tip.y - 3, tip.x + 1, tip.y + 4, tip.x - 4, tip.y + 4]).fill(0x5a5f66);
+    this.workers.forEach((w, i) => { w.rotation = this.reducedMotion ? 0 : Math.max(0, Math.sin(t * 3 + i * 2)) * 0.25; });
+  }
+
+  /** After reopening: the crater becomes a fresh asphalt patch; stalls are rebuilt. */
+  private drawRepair(target: P) {
+    if (this.repairDrawn) return;
+    this.repairDrawn = true;
+    this.hazardLayer.clear();
+    this.crater.clear();
+    this.crater.scale.set(1);
+    this.crater.pivot.set(0, 0);
+    this.crater.position.set(0, 0);
+    this.crater.ellipse(target.x, target.y, 62, 31).fill(0x4f5c69);
+    this.crater.ellipse(target.x, target.y, 62, 31).stroke({ width: 2, color: 0x3c4651, alpha: 0.8 });
+    for (let i = -2; i <= 2; i++) this.crater.moveTo(target.x + i * 22 - 14, target.y - 12 + Math.abs(i) * 4).lineTo(target.x + i * 22 + 14, target.y + 12 - Math.abs(i) * 4).stroke({ width: 1, color: 0x2f3842, alpha: 0.5 });
+    for (const st of this.stalls) { st.root.children[0].visible = true; st.debris.visible = false; }
+    for (const e of this.embers) e.s.visible = false;
+    for (const d of this.dust) { d.s.visible = false; d.life = 0; }
+    this.shock.clear();
   }
 
   private updateSparks(sim: Simulation, dt: number) {
@@ -897,7 +985,12 @@ export class CityRenderer {
     }
     const hz = sim.hazard;
     this.flash.clear();
-    if (!hz) return;
+    this.updateCrew(sim, t);
+    if (!hz) {
+      if (sim.clearedTick !== null) this.drawRepair(target);
+      return;
+    }
+    const progress = sim.crewOnSite ? Math.max(0, Math.min(1, (sim.tick - METEOR_CREW_TICK) / (METEOR_CLEARED_TICK - METEOR_CREW_TICK))) : 0;
     const since = (sim.tick - hz.impactTick) * 0.1;
     if (since < 1.2) {
       const a = Math.max(0, 0.85 - since * 0.75) * (this.reducedMotion ? 0.3 : 1);
@@ -943,14 +1036,17 @@ export class CityRenderer {
       for (const s of this.stalls) {
         if (Math.hypot(s.x - hz.center.x, s.y - hz.center.y) <= hz.radius + 0.6) { s.root.children[0].visible = false; s.debris.visible = true; }
       }
+      this.crater.pivot.set(target.x, target.y);
+      this.crater.position.set(target.x, target.y);
     }
+    this.crater.scale.set(1 - 0.55 * progress); // crews fill the crater in
     this.embers.forEach((e, i) => {
       e.s.visible = true;
       const a = (i / this.embers.length) * Math.PI * 2;
       const rr = 8 + (i % 4) * 7;
       e.s.position.set(target.x + Math.cos(a + t * 0.2) * rr, target.y + Math.sin(a + t * 0.2) * rr * 0.5 - ((t * 12 + i * 5) % 20));
       e.s.scale.set(0.08 + 0.04 * Math.sin(t * 5 + e.phase));
-      e.s.alpha = 0.9 * Math.max(0.35, 1 - since / 40) * (0.6 + 0.4 * Math.sin(t * 6 + e.phase));
+      e.s.alpha = 0.9 * Math.max(0.35, 1 - since / 40) * (0.6 + 0.4 * Math.sin(t * 6 + e.phase)) * (1 - progress);
     });
     for (const d of this.dust) {
       if (d.life <= 0) {
