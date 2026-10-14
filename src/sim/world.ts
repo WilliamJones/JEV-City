@@ -217,8 +217,8 @@ export class Simulation {
     return findPath(this.walkable, c.tile, to) !== null;
   }
 
-  private nearestNeedy(c: Citizen): Citizen | null {
-    let best: Citizen | null = null, bestD = 7.5;
+  private nearestNeedy(c: Citizen, maxDist = 7.5): Citizen | null {
+    let best: Citizen | null = null, bestD = maxDist;
     for (const o of this.citizens) {
       if (o === c || !o.needsHelp) continue;
       if (this.citizens.some((h) => h !== c && h.helpingId === o.id)) continue;
@@ -264,7 +264,7 @@ export class Simulation {
     if (this.reachable(c, homeDoor(c)) && this.hazardLevelAt(homeDoor(c)) !== 'immediate') out.push('go_home');
     if (this.incidentActive && this.reachable(c, buildingById('shelter').door)) out.push('seek_shelter');
     if (this.nearestNeedy(c)) out.push('help_neighbor');
-    if (this.shopOpen() && hz !== 'immediate' && c.needs.supplies >= 0.4 && this.reachable(c, buildingById('shop').door)) out.push('seek_supplies');
+    if (this.shopOpen() && hz !== 'immediate' && c.needs.supplies >= 0.55 && this.reachable(c, buildingById('shop').door)) out.push('seek_supplies');
     if (this.incidentActive && (c.role === 'healthcare' || c.role === 'responder')) out.push('report_for_duty');
     out.push('wait');
     return out;
@@ -371,8 +371,8 @@ export class Simulation {
         c.actionLabel = 'Getting supplies';
         break;
       case 'report_for_duty': {
-        const post = c.role === 'healthcare' ? buildingById('clinic').door : this.nearestNeedy(c)?.tile ?? buildingById('firestation').door;
-        const needy = c.role === 'responder' ? this.nearestNeedy(c) : null;
+        const needy = c.role === 'responder' ? this.nearestNeedy(c, Infinity) : null;
+        const post = c.role === 'healthcare' ? buildingById('clinic').door : needy?.tile ?? buildingById('firestation').door;
         if (needy) c.helpingId = needy.id;
         this.go(c, post);
         c.actionLabel = c.role === 'healthcare' ? 'Reporting to the clinic' : needy ? `Responding to ${needy.name.split(' ')[0]}` : 'Reporting to the station';
