@@ -31,14 +31,14 @@ export function TopBar({ ctrl, onScenario, onMode, liveAvailable, onHelp }: { ct
         {badge.label}
       </div>
 
-      <nav className="chip flex p-1" aria-label="Scenario">
+      <nav className="chip no-scrollbar flex min-w-0 max-w-full overflow-x-auto p-1" aria-label="Scenario">
         {SCENARIOS.map((s) => (
           <button
             key={s}
             onClick={() => onScenario(s)}
             aria-pressed={ctrl.scenario === s}
             title={SCENARIO_META[s].title}
-            className="rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
+            className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
             style={ctrl.scenario === s ? { background: 'var(--panel-solid)', color: 'var(--ink)', boxShadow: 'var(--shadow)' } : { color: 'var(--ink-soft)' }}
           >
             <span aria-hidden className="mr-1">{SCENARIO_ICON[s]}</span>
