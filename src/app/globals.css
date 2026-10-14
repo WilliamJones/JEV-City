@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
 :root {
+  --font-inter: 'Inter Variable';
+  --font-display: 'Space Grotesk Variable';
+  --font-mono: 'JetBrains Mono Variable';
   --sky-top: #cfe6f1;
   --sky-bottom: #eef6f3;
   --panel: rgba(248, 250, 247, 0.86);

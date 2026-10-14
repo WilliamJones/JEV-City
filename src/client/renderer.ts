@@ -532,7 +532,7 @@ export class CityRenderer {
 
     let badge: Text | null = null;
     if (b.kind === 'shelter' || b.kind === 'clinic') {
-      badge = new Text({ text: '', style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 11, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x14263e, width: 3 } } });
+      badge = new Text({ text: '', style: { fontFamily: 'Inter Variable, Inter, system-ui, sans-serif', fontSize: 11, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x14263e, width: 3 } } });
       badge.anchor.set(0.5);
       badge.position.set(roofCenter.x, roofCenter.y - 38);
       root.addChild(badge);
@@ -601,7 +601,7 @@ export class CityRenderer {
     bubble.addChild(bubbleBg, bubbleIcon);
     bubble.position.set(0, -38);
     bubble.visible = false;
-    const label = new Text({ text: c.name.split(' ')[0], style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 11, fontWeight: '700', fill: 0x1b303d, stroke: { color: 0xffffff, width: 3 } } });
+    const label = new Text({ text: c.name.split(' ')[0], style: { fontFamily: 'Inter Variable, Inter, system-ui, sans-serif', fontSize: 11, fontWeight: '700', fill: 0x1b303d, stroke: { color: 0xffffff, width: 3 } } });
     label.anchor.set(0.5, 1);
     label.position.set(0, -27);
     label.visible = false;

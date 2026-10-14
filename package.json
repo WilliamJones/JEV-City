@@ -12,6 +12,9 @@
     "record": "tsx scripts/record.ts --ticks 2400 --out public/replays"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
     "@upstash/redis": "^1.35.3",
     "next": "^15.5.27",
     "pixi.js": "^8.6.6",

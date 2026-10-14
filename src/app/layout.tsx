@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
-import { Inter, Space_Grotesk, JetBrains_Mono } from 'next/font/google';
+// Self-hosted fonts: builds never depend on fetching from Google Fonts.
+import '@fontsource-variable/inter';
+import '@fontsource-variable/space-grotesk';
+import '@fontsource-variable/jetbrains-mono';
 import './globals.css';
-
-const inter = Inter({ variable: '--font-inter', subsets: ['latin'] });
-const display = Space_Grotesk({ variable: '--font-display', subsets: ['latin'], weight: ['500', '700'] });
-const mono = JetBrains_Mono({ variable: '--font-mono', subsets: ['latin'], weight: ['400', '600'] });
 
 export const metadata: Metadata = {
   title: 'JEV City — the little city with big decisions',
@@ -15,7 +14,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${display.variable} ${mono.variable} antialiased`}>{children}</body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
